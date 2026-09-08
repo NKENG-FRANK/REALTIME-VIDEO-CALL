@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Callwave — Authentication</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#2D5016;
+  --green-dark:#203B10;
+  --green-light:#3A6B1F;
+  --yellow:#FFD700;
+  --red:#DC143C;
+  --cream:#F4F7E9;
+  --page:#F1F6F4;
+  --text:#253229;
+  --muted:#929A95;
+  --input:#F3F6F4;
+}
+html,body{width:100%;height:100%}
+body{
+  overflow:hidden;
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--page);
+  color:var(--text);
+}
+
+/* Background accents from the reference image */
+.page-bg{position:fixed;inset:0;overflow:hidden;background:#F1F6F4}
+.yellow-shape{
+  position:absolute;width:1000px;height:1000px;border-radius:50%;
+  background:var(--yellow);left:-245px;bottom:-265px;opacity:.88;
+}
+.red-shape{
+  position:absolute;width:1000px;height:1000px;border-radius:50%;
+  background:var(--red);right:-145px;top:-190px;
+}
+.soft-green{
+  position:absolute;width:360px;height:360px;border-radius:50%;
+  background:#C9DDBD;right:18%;bottom:-220px;filter:blur(80px);opacity:.4;
+}
+
+/* Main auth card */
+.auth{
+  position:relative;
+  z-index:2;
+  width:min(1000px,88vw);
+  height:min(570px,82vh);
+  min-height:500px;
+  margin:auto;
+  top:50%;
+  transform:translateY(-50%);
+  display:grid;
+  grid-template-columns:38% 62%;
+  background:#fff;
+  border-radius:18px;
+  box-shadow:0 22px 55px rgba(35,53,42,.16);
+  overflow:hidden;
+}
+
+/* Left green panel */
+.welcome{
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(145deg,var(--green),var(--green-light));
+  color:#fff;
+  padding:42px 34px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.brand{
+  display:flex;align-items:center;gap:9px;
+  font-size:13px;font-weight:800;letter-spacing:.1px;
+}
+.brand-mark{
+  width:30px;height:30px;border-radius:8px;
+  background:var(--yellow);color:var(--green);
+  display:grid;place-items:center;font-weight:900;
+}
+.welcome-content{
+  position:relative;z-index:3;
+  text-align:center;
+  margin-top:20px;
+}
+.welcome h2{
+  font-size:29px;line-height:1.15;margin-bottom:14px;
+}
+.welcome p{
+  width:90%;margin:0 auto 28px;
+  font-size:12px;line-height:1.7;color:rgba(255,255,255,.78);
+}
+.outline-btn{
+  height:42px;padding:0 42px;border-radius:24px;
+  border:1px solid rgba(255,255,255,.85);
+  background:transparent;color:#fff;
+  font:750 11px inherit;letter-spacing:.05em;
+  cursor:pointer;transition:.2s;
+}
+.outline-btn:hover{background:rgba(255,255,255,.12);transform:translateY(-1px)}
+.welcome-decoration{
+  position:absolute;border-radius:50%;
+  border:1px solid rgba(244,247,233,.11);
+}
+.w1{width:300px;height:300px;left:-180px;bottom:-130px}
+.w2{width:180px;height:180px;right:-90px;top:95px}
+.w3{width:90px;height:90px;right:45px;bottom:35px}
+.diamond{
+  position:absolute;width:34px;height:34px;
+  border:1px solid rgba(244,247,233,.11);
+  transform:rotate(45deg);right:54px;top:42px;
+}
+.diamond2{right:42px;bottom:120px;width:24px;height:24px}
+
+/* Right form */
+.form-side{
+  position:relative;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:40px 70px;
+  background:rgba(255,255,255,.96);
+}
+.form{width:min(360px,100%);text-align:center}
+h1{
+  color:var(--green);
+  font-size:30px;
+  line-height:1.1;
+  margin-bottom:28px;
+  font-weight:850;
+}
+.switch-note{
+  font-size:11px;color:var(--muted);
+  margin-top:20px;
+}
+.switch-note a{color:var(--green);font-weight:800;text-decoration:none;cursor:pointer}
+.field{
+  margin-bottom:11px;
+  text-align:left;
+}
+.input-wrap{position:relative}
+.input-icon{
+  position:absolute;left:13px;top:50%;
+  transform:translateY(-50%);
+  font-size:13px;color:#9AA29D;
+}
+input{
+  width:100%;height:43px;
+  border:0;outline:0;
+  background:var(--input);
+  border-radius:2px;
+  padding:0 14px 0 38px;
+  font:12px inherit;color:var(--text);
+}
+input:focus{
+  box-shadow:0 0 0 2px rgba(45,80,22,.16);
+  background:#F8FAF8;
+}
+input::placeholder{color:#A5ADA8}
+.password-toggle{
+  position:absolute;right:11px;top:50%;
+  transform:translateY(-50%);
+  border:0;background:none;color:#9AA29D;
+  cursor:pointer;font-size:12px;
+}
+.submit{
+  width:145px;height:42px;
+  margin-top:10px;
+  border:0;border-radius:24px;
+  background:var(--green);
+  color:#fff;
+  font:800 11px inherit;
+  letter-spacing:.07em;
+  cursor:pointer;
+  box-shadow:0 7px 16px rgba(45,80,22,.2);
+  border-bottom:3px solid var(--yellow);
+  transition:.2s;
+}
+.submit:hover{background:var(--green-light);transform:translateY(-1px)}
+.form-footer{
+  margin-top:27px;
+  font-size:10px;color:#A0A7A2;
+}
+.form-footer a{color:var(--green);font-weight:750;text-decoration:none;cursor:pointer}
+
+/* Small color accents inside the white area */
+.corner-dot{
+  position:absolute;width:8px;height:8px;border-radius:50%;
+  background:var(--red);right:35px;bottom:34px;opacity:.65;
+}
+.corner-bar{
+  position:absolute;width:34px;height:4px;border-radius:4px;
+  background:var(--yellow);right:28px;top:34px;transform:rotate(-20deg);
+}
+
+/* Screen switching */
+.screen{display:none;width:100%;height:100%}
+.screen.active{display:block}
+
+
+/* Sliding authentication transition */
+.auth-stage{
+  position:relative;
+  z-index:2;
+  width:min(1000px,88vw);
+  height:min(570px,82vh);
+  min-height:500px;
+  margin:auto;
+  top:50%;
+  transform:translateY(-50%);
+  overflow:hidden;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 22px 55px rgba(35,53,42,.16);
+}
+.auth-panel{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:grid;
+  grid-template-columns:38% 62%;
+  transition:transform .65s cubic-bezier(.77,0,.18,1);
+}
+.auth-panel .welcome,
+.auth-panel .form-side{
+  min-width:0;
+}
+.auth-panel.slide-signup .welcome{
+  transform:translateX(163%);
+}
+.auth-panel.slide-signup .form-side{
+  transform:translateX(-61.3%);
+}
+.auth-panel.slide-signup{
+  transform:translateX(0);
+}
+.auth-panel.slide-signin{
+  transform:translateX(0);
+}
+.auth-panel .welcome,
+.auth-panel .form-side{
+  transition:transform .65s cubic-bezier(.77,0,.18,1);
+}
+.auth-panel.slide-signup .welcome{
+  z-index:4;
+}
+.auth-panel.slide-signup .form-side{
+  z-index:5;
+}
+
+/* Responsive */
+@media(max-width:760px){
+  .auth-stage{height:auto;min-height:620px}
+  .auth-panel{position:relative;height:auto;min-height:620px;grid-template-columns:1fr}
+  .auth-panel .welcome{min-height:300px}
+  .auth-panel .form-side{min-height:420px}
+  .auth-panel.slide-signup .welcome,
+  .auth-panel.slide-signup .form-side{transform:none}
+}
+</style>
+</head>
+<body>
+<div class="page-bg">
+  <div class="yellow-shape"></div>
+  <div class="red-shape"></div>
+  <div class="soft-green"></div>
+</div>
+
+<!-- AUTHENTICATION SLIDER -->
+<div class="auth-stage">
+  <div id="authPanel" class="auth-panel slide-signin">
+
+    <!-- SIGN IN PANEL -->
+    <aside class="welcome">
+      <div class="brand"><div class="brand-mark">C</div> Callwave</div>
+      <div class="welcome-content">
+        <h2>Welcome Back!</h2>
+        <p>To keep connected with your people, please sign in with your personal information.</p>
+        <button class="outline-btn" onclick="showScreen('signin')">SIGN IN</button>
+      </div>
+      <div class="welcome-decoration w1"></div>
+      <div class="welcome-decoration w2"></div>
+      <div class="welcome-decoration w3"></div>
+      <div class="diamond"></div>
+      <div class="diamond diamond2"></div>
+    </aside>
+
+    <main class="form-side">
+      <div class="form">
+        <h1 id="formTitle">Sign In</h1>
+
+        <div class="field signin-only">
+          <div class="input-wrap">
+            <span class="input-icon">👤</span>
+            <input type="email" placeholder="Email address">
+          </div>
+        </div>
+
+        <div class="field signin-only">
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input id="signinPassword" type="password" placeholder="Password">
+            <button class="password-toggle" onclick="togglePassword('signinPassword',this)">◉</button>
+          </div>
+        </div>
+
+        <div class="signin-only" style="display:flex;justify-content:space-between;align-items:center;margin:13px 2px 5px;font-size:10px;color:var(--muted)">
+          <label style="display:flex;align-items:center;gap:5px">
+            <input type="checkbox" checked style="width:12px;height:12px;padding:0;accent-color:var(--green)">
+            Remember me
+          </label>
+          <a href="#" style="color:var(--green);font-weight:750;text-decoration:none">Forgot password?</a>
+        </div>
+
+        <div class="signup-only" style="display:none">
+          <div class="field">
+            <div class="input-wrap"><span class="input-icon">👤</span><input type="text" placeholder="Full name"></div>
+          </div>
+          <div class="field">
+            <div class="input-wrap"><span class="input-icon">✉</span><input type="email" placeholder="Email address"></div>
+          </div>
+          <div class="field">
+            <div class="input-wrap">
+              <span class="input-icon">🔒</span>
+              <input id="signupPassword" type="password" placeholder="Password">
+              <button class="password-toggle" onclick="togglePassword('signupPassword',this)">◉</button>
+            </div>
+          </div>
+          <div style="font-size:9px;color:var(--muted);line-height:1.5;text-align:left;margin:14px 2px">
+            By creating an account, you agree to Callwave's
+            <a href="#" style="color:var(--green);font-weight:750;text-decoration:none">Terms of Service</a>
+            and
+            <a href="#" style="color:var(--green);font-weight:750;text-decoration:none">Privacy Policy</a>.
+          </div>
+        </div>
+
+        <button id="submitButton" class="submit">SIGN IN</button>
+
+        <p class="form-footer signin-only">Don't have an account?
+          <a onclick="showScreen('signup')">Create Account</a>
+        </p>
+        <p class="form-footer signup-only" style="display:none">Already have an account?
+          <a onclick="showScreen('signin')">Sign In</a>
+        </p>
+      </div>
+      <span class="corner-dot"></span><span class="corner-bar"></span>
+    </main>
+  </div>
+</div>
+
+<script>
+const panel = document.getElementById('authPanel');
+const title = document.getElementById('formTitle');
+const submitButton = document.getElementById('submitButton');
+
+function showScreen(id){
+  const signup = id === 'signup';
+
+  panel.classList.toggle('slide-signup', signup);
+  panel.classList.toggle('slide-signin', !signup);
+
+  title.textContent = signup ? 'Create Account' : 'Sign In';
+  submitButton.textContent = signup ? 'SIGN UP' : 'SIGN IN';
+
+  document.querySelectorAll('.signin-only').forEach(el=>{
+    el.style.display = signup ? 'none' : '';
+  });
+  document.querySelectorAll('.signup-only').forEach(el=>{
+    el.style.display = signup ? (el.classList.contains('form-footer') ? 'block' : '') : 'none';
+  });
+}
+
+function togglePassword(id,button){
+  const input=document.getElementById(id);
+  input.type=input.type==='password'?'text':'password';
+  button.textContent=input.type==='password'?'◉':'◌';
+}
+</script>
+</body>
+</html>
