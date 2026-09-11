@@ -1,5 +1,5 @@
 {
-  "name": "callwave-backend",
+  "name": "background-processes",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -9,10 +9,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "private": "true",
-  "workspaces": [
-    "services/*",
-    "packages/*"
-  ]
+  "type": "commonjs"
 }
