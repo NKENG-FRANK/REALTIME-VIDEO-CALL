@@ -1,0 +1,17 @@
+{
+	"name": "@callwave/rabbitmq",
+	"version": "1.0.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"dev": "tsx watch src/index.ts",
+		"start": "node dist/index.js",
+		"test": "vitest run --passWithNoTests",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": { "@callwave/config": "^1.0.0", "amqplib": "^0.10.5" },
+	"devDependencies": { "@types/amqplib": "^0.10.6" }
+}

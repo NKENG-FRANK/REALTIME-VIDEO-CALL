@@ -1,18 +1,28 @@
 {
   "name": "callwave-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Callwave backend monorepo",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run build -w @callwave/config && npm run build -w @callwave/shared && npm run build -w @callwave/database && npm run build -w @callwave/redis && npm run build -w @callwave/rabbitmq && npm run build -w audio-calls && npm run build -w background-processes && npm run build -w user-management && npm run build -w video-calls",
+    "dev": "concurrently -n users,audio,video,worker \"npm run dev -w user-management\" \"npm run dev -w audio-calls\" \"npm run dev -w video-calls\" \"npm run dev -w background-processes\"",
+    "start": "concurrently -n users,audio,video,worker \"npm run start -w user-management\" \"npm run start -w audio-calls\" \"npm run start -w video-calls\" \"npm run start -w background-processes\"",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "private": "true",
   "workspaces": [
     "services/*",
     "packages/*"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
 }

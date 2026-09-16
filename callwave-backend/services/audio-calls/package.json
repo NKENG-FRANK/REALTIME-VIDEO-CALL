@@ -1,13 +1,18 @@
 {
   "name": "audio-calls",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Callwave audio call service",
+  "type": "module",
+  "main": "dist/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "dependencies": { "@callwave/config": "^1.0.0" }
 }

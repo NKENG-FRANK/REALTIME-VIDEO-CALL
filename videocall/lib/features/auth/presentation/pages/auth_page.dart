@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/widgets/animated_background.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/sign_in_form.dart';
 import '../widgets/sign_up_form.dart';
@@ -9,85 +10,58 @@ import '../widgets/welcome_panel.dart';
 class AuthPage extends StatelessWidget {
   const AuthPage({Key? key}) : super(key: key);
 
+  /// Navigate to calls history after successful auth
+  void _navigateAfterAuth(BuildContext context) {
+    Navigator.of(context).pushReplacementNamed('/calls');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 760;
-
     return Scaffold(
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Background
-          Container(color: AppColors.background),
+          // Animated gradient blob background matching calls/contacts/settings
+          const AnimatedBackground(),
 
-          // Decorative shapes
-          Positioned(
-            left: -245,
-            bottom: -265,
-            child: Opacity(
-              opacity: 0.88,
-              child: Container(
-                width: 1000,
-                height: 1000,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.accent,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: -145,
-            top: -165,
-            child: Container(
-              width: 1000,
-              height: 1000,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.error,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 200,
-            bottom: -220,
-            child: Opacity(
-              opacity: 0.4,
-              child: Container(
-                width: 360,
-                height: 360,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFC9DDBD),
-                ),
-              ),
-            ),
-          ),
-
-          // Main card
-          Consumer<AuthController>(
-            builder: (context, authController, _) {
-              return Center(
-                child: Container(
-                  width: isMobile ? double.infinity : 1000,
-                  height: isMobile ? null : 570,
-                  margin: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.shadowColor,
-                        blurRadius: 55,
-                        offset: const Offset(0, 22),
+          // Centered responsive card inside SafeArea
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 760;
+                return Center(
+                  child: SingleChildScrollView(
+                    child: Container(
+                      width: isMobile ? double.infinity : 1000,
+                      height: isMobile ? null : 570,
+                      margin: EdgeInsets.all(isMobile ? 0 : 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(isMobile ? 0 : 18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.9),
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.shadowColor,
+                            blurRadius: 55,
+                            offset: Offset(0, 22),
+                          ),
+                        ],
                       ),
-                    ],
+                      clipBehavior: Clip.antiAlias,
+                      child: Consumer<AuthController>(
+                        builder: (context, authController, _) {
+                          return isMobile
+                              ? _buildMobileLayout(context, authController)
+                              : _buildDesktopLayout(context, authController);
+                        },
+                      ),
+                    ),
                   ),
-                  child: isMobile
-                      ? _buildMobileLayout(context, authController)
-                      : _buildDesktopLayout(context, authController),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -137,26 +111,31 @@ class AuthPage extends StatelessWidget {
                     child: authController.isSignUp
                         ? SignUpForm(
                             fullName: authController.fullName,
-                            email: authController.email,
+                            matricule: authController.matricule,
                             password: authController.password,
                             showPassword: authController.showPassword,
                             onFullNameChanged:
                                 authController.updateFullName,
-                            onEmailChanged: authController.updateEmail,
+                            onMatriculeChanged: authController.updateMatricule,
                             onPasswordChanged:
                                 authController.updatePassword,
                             onTogglePassword:
                                 authController.togglePasswordVisibility,
                             onSignIn: () => authController.toggleAuthMode(),
-                            onSignUp: () => authController.signUp(),
+                            onSignUp: () async {
+                              final success = await authController.signUp();
+                              if (success && context.mounted) {
+                                _navigateAfterAuth(context);
+                              }
+                            },
                             isLoading: authController.isLoading,
                           )
                         : SignInForm(
-                            email: authController.email,
+                            matricule: authController.matricule,
                             password: authController.password,
                             showPassword: authController.showPassword,
                             rememberMe: authController.rememberMe,
-                            onEmailChanged: authController.updateEmail,
+                            onMatriculeChanged: authController.updateMatricule,
                             onPasswordChanged:
                                 authController.updatePassword,
                             onTogglePassword:
@@ -164,7 +143,12 @@ class AuthPage extends StatelessWidget {
                             onToggleRememberMe:
                                 authController.toggleRememberMe,
                             onSignUp: () => authController.toggleAuthMode(),
-                            onSignIn: () => authController.signIn(),
+                            onSignIn: () async {
+                              final success = await authController.signIn();
+                              if (success && context.mounted) {
+                                _navigateAfterAuth(context);
+                              }
+                            },
                             isLoading: authController.isLoading,
                           ),
                   ),
@@ -246,32 +230,42 @@ class AuthPage extends StatelessWidget {
                     ? SignUpForm(
                         key: const ValueKey('mobile-sign-up'),
                         fullName: authController.fullName,
-                        email: authController.email,
+                        matricule: authController.matricule,
                         password: authController.password,
                         showPassword: authController.showPassword,
                         onFullNameChanged: authController.updateFullName,
-                        onEmailChanged: authController.updateEmail,
+                        onMatriculeChanged: authController.updateMatricule,
                         onPasswordChanged: authController.updatePassword,
                         onTogglePassword:
                             authController.togglePasswordVisibility,
                         onSignIn: () => authController.toggleAuthMode(),
-                        onSignUp: () => authController.signUp(),
+                        onSignUp: () async {
+                          final success = await authController.signUp();
+                          if (success && context.mounted) {
+                            _navigateAfterAuth(context);
+                          }
+                        },
                         isLoading: authController.isLoading,
                       )
                     : SignInForm(
                         key: const ValueKey('mobile-sign-in'),
-                        email: authController.email,
+                        matricule: authController.matricule,
                         password: authController.password,
                         showPassword: authController.showPassword,
                         rememberMe: authController.rememberMe,
-                        onEmailChanged: authController.updateEmail,
+                        onMatriculeChanged: authController.updateMatricule,
                         onPasswordChanged: authController.updatePassword,
                         onTogglePassword:
                             authController.togglePasswordVisibility,
                         onToggleRememberMe:
                             authController.toggleRememberMe,
                         onSignUp: () => authController.toggleAuthMode(),
-                        onSignIn: () => authController.signIn(),
+                        onSignIn: () async {
+                          final success = await authController.signIn();
+                          if (success && context.mounted) {
+                            _navigateAfterAuth(context);
+                          }
+                        },
                         isLoading: authController.isLoading,
                       ),
               ),
