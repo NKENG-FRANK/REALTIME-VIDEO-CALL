@@ -20,6 +20,31 @@ class AppColors {
   static const Color textMuted = Color(0xFF929A95);    // Muted text
   static const Color textLight = Color(0xFFF4F7E9);    // Light text (for white bg)
 
+  // Status colors
+  static const Color onlineGreen = Color(0xFF4DBB55);
+  static const Color awayYellow = Color(0xFFE6A100);
+
+  // Signal indicator
+  static const Color signalStrong = Color(0xFF3A6B1F);
+  static const Color signalMedium = Color(0xFF6B9B4F);
+  static const Color signalWeak = Color(0xFFB0C9A0);
+
+  // Call action colors
+  static const Color callDecline = Color(0xFFDC3545);
+  static const Color callAccept = Color(0xFF3A5A28);
+
+  // Stat card tints
+  static const Color statGreenTint = Color(0xFFD6E8CE);
+  static const Color statYellowTint = Color(0xFFF0EDD0);
+  static const Color statNeutralTint = Color(0xFFE8E8E0);
+
+  // Star rating
+  static const Color starDefault = Color(0xFFCBC3B5);
+  static const Color starActive = Color(0xFFD4A84B);
+
+  // Page background (sage/warm white used on call screens)
+  static const Color callBackground = Color(0xFFF3F5F0);
+
   // Transparency
   static const Color shadowColor = Color.fromRGBO(35, 53, 42, 0.16);
   static const Color borderColor = Color.fromRGBO(244, 247, 233, 0.11);

@@ -6,9 +6,10 @@ class AuthController extends ChangeNotifier {
   bool _isLoading = false;
   bool _showPassword = false;
   bool _rememberMe = true;
+  bool _isAuthenticated = false;
 
   // Form data
-  String _email = '';
+  String _matricule = '';
   String _password = '';
   String _fullName = '';
 
@@ -17,8 +18,9 @@ class AuthController extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get showPassword => _showPassword;
   bool get rememberMe => _rememberMe;
+  bool get isAuthenticated => _isAuthenticated;
 
-  String get email => _email;
+  String get matricule => _matricule;
   String get password => _password;
   String get fullName => _fullName;
 
@@ -42,8 +44,8 @@ class AuthController extends ChangeNotifier {
   }
 
   // Update form fields
-  void updateEmail(String value) {
-    _email = value;
+  void updateMatricule(String value) {
+    _matricule = value;
   }
 
   void updatePassword(String value) {
@@ -54,11 +56,11 @@ class AuthController extends ChangeNotifier {
     _fullName = value;
   }
 
-  // Sign In
-  Future<void> signIn() async {
-    if (_email.isEmpty || _password.isEmpty) {
-      print('Email and password required');
-      return;
+  // Sign In — returns true on success
+  Future<bool> signIn() async {
+    if (_matricule.isEmpty || _password.isEmpty) {
+      print('Matricule and password required');
+      return false;
     }
 
     _isLoading = true;
@@ -66,25 +68,29 @@ class AuthController extends ChangeNotifier {
 
     try {
       // TODO: Call backend API
-      // await _authService.login(_email, _password);
-      print('Sign In: $_email');
+      // await _authService.login(_matricule, _password);
+      print('Sign In: $_matricule');
       
       // Simulate network delay
       await Future.delayed(const Duration(seconds: 2));
-      
+
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
     } catch (e) {
       print('Sign In Error: $e');
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Sign Up
-  Future<void> signUp() async {
-    if (_fullName.isEmpty || _email.isEmpty || _password.isEmpty) {
+  // Sign Up — returns true on success
+  Future<bool> signUp() async {
+    if (_fullName.isEmpty || _matricule.isEmpty || _password.isEmpty) {
       print('All fields required');
-      return;
+      return false;
     }
 
     _isLoading = true;
@@ -92,23 +98,34 @@ class AuthController extends ChangeNotifier {
 
     try {
       // TODO: Call backend API
-      // await _authService.register(_fullName, _email, _password);
-      print('Sign Up: $_fullName, $_email');
+      // await _authService.register(_fullName, _matricule, _password);
+      print('Sign Up: $_fullName, $_matricule');
       
       // Simulate network delay
       await Future.delayed(const Duration(seconds: 2));
-      
+
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
     } catch (e) {
       print('Sign Up Error: $e');
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // Sign out
+  void signOut() {
+    _isAuthenticated = false;
+    _clearForm();
+    notifyListeners();
   }
 
   // Clear form
   void _clearForm() {
-    _email = '';
+    _matricule = '';
     _password = '';
     _fullName = '';
     _showPassword = false;

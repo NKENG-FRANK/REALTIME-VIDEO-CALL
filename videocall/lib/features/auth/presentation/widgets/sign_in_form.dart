@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
 
 class SignInForm extends StatelessWidget {
-  final String email;
+  final String matricule;
   final String password;
   final bool showPassword;
   final bool rememberMe;
-  final ValueChanged<String> onEmailChanged;
+  final ValueChanged<String> onMatriculeChanged;
   final ValueChanged<String> onPasswordChanged;
   final VoidCallback onTogglePassword;
   final VoidCallback onToggleRememberMe;
@@ -16,11 +16,11 @@ class SignInForm extends StatelessWidget {
 
   const SignInForm({
     Key? key,
-    required this.email,
+    required this.matricule,
     required this.password,
     required this.showPassword,
     required this.rememberMe,
-    required this.onEmailChanged,
+    required this.onMatriculeChanged,
     required this.onPasswordChanged,
     required this.onTogglePassword,
     required this.onToggleRememberMe,
@@ -45,16 +45,16 @@ class SignInForm extends StatelessWidget {
           ),
           const SizedBox(height: 28),
 
-          // Email field
+          // Matricule field
           TextField(
-            onChanged: onEmailChanged,
-            keyboardType: TextInputType.emailAddress,
+            onChanged: onMatriculeChanged,
+            keyboardType: TextInputType.text,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.person_outline, size: 13),
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: 'Email address',
+              hintText: 'Matricule',
             ),
           ),
           const SizedBox(height: 11),

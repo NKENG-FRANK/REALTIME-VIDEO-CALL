@@ -3,11 +3,11 @@ import '../../../../config/theme/app_colors.dart';
 
 class SignUpForm extends StatelessWidget {
   final String fullName;
-  final String email;
+  final String matricule;
   final String password;
   final bool showPassword;
   final ValueChanged<String> onFullNameChanged;
-  final ValueChanged<String> onEmailChanged;
+  final ValueChanged<String> onMatriculeChanged;
   final ValueChanged<String> onPasswordChanged;
   final VoidCallback onTogglePassword;
   final VoidCallback onSignIn;
@@ -17,11 +17,11 @@ class SignUpForm extends StatelessWidget {
   const SignUpForm({
     Key? key,
     required this.fullName,
-    required this.email,
+    required this.matricule,
     required this.password,
     required this.showPassword,
     required this.onFullNameChanged,
-    required this.onEmailChanged,
+    required this.onMatriculeChanged,
     required this.onPasswordChanged,
     required this.onTogglePassword,
     required this.onSignIn,
@@ -58,16 +58,16 @@ class SignUpForm extends StatelessWidget {
           ),
           const SizedBox(height: 11),
 
-          // Email field
+          // Matricule field
           TextField(
-            onChanged: onEmailChanged,
-            keyboardType: TextInputType.emailAddress,
+            onChanged: onMatriculeChanged,
+            keyboardType: TextInputType.text,
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.email_outlined, size: 13),
+              prefixIcon: const Icon(Icons.badge_outlined, size: 13),
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: 'Email address',
+              hintText: 'Matricule',
             ),
           ),
           const SizedBox(height: 11),
