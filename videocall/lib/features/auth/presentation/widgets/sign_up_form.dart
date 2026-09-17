@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 
 class SignUpForm extends StatelessWidget {
   final String fullName;
@@ -31,12 +32,13 @@ class SignUpForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
       child: Column(
         children: [
           Text(
-            'Create Account',
-            style: TextStyle(
+            l10n.createAccountTitle,
+            style: const TextStyle(
               color: AppColors.primary,
               fontSize: 30,
               fontWeight: FontWeight.w900,
@@ -53,7 +55,7 @@ class SignUpForm extends StatelessWidget {
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: 'Full name',
+              hintText: l10n.fullName,
             ),
           ),
           const SizedBox(height: 11),
@@ -67,7 +69,7 @@ class SignUpForm extends StatelessWidget {
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: 'Matricule',
+              hintText: l10n.matriculePlaceholder,
             ),
           ),
           const SizedBox(height: 11),
@@ -94,7 +96,7 @@ class SignUpForm extends StatelessWidget {
                   ),
                 ),
               ),
-              hintText: 'Password',
+              hintText: l10n.passwordPlaceholder,
             ),
           ),
           const SizedBox(height: 14),
@@ -136,9 +138,9 @@ class SignUpForm extends StatelessWidget {
                       strokeWidth: 2,
                     ),
                   )
-                : const Text(
-                    'SIGN UP',
-                    style: TextStyle(
+                : Text(
+                    l10n.signUp.toUpperCase(),
+                    style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.07,
@@ -152,9 +154,9 @@ class SignUpForm extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                'Already have an account? ',
-                style: TextStyle(
+              Text(
+                l10n.alreadyHaveAccount,
+                style: const TextStyle(
                   fontSize: 10,
                   color: Color(0xFFA0A7A2),
                 ),
@@ -166,9 +168,9 @@ class SignUpForm extends StatelessWidget {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text(
-                  'Sign In',
-                  style: TextStyle(
+                child: Text(
+                  l10n.signInLink,
+                  style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.primary,
                     fontWeight: FontWeight.w700,

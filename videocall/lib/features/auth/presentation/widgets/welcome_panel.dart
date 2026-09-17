@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 
 class WelcomePanel extends StatelessWidget {
   final VoidCallback onSignInTap;
@@ -148,7 +149,7 @@ class WelcomePanel extends StatelessWidget {
                 Column(
                   children: [
                     Text(
-                      isSignUp ? 'Join Us!' : 'Welcome Back!',
+                      isSignUp ? 'Join Us!' : AppLocalizations.of(context).welcomeTitle,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 29,
@@ -159,8 +160,8 @@ class WelcomePanel extends StatelessWidget {
                     const SizedBox(height: 14),
                     Text(
                       isSignUp
-                          ? 'Create your account and start making crystal-clear calls in seconds.'
-                          : 'To keep connected with your people, please sign in with your personal information.',
+                          ? AppLocalizations.of(context).welcomeSubtitle
+                          : AppLocalizations.of(context).welcomeSubtitle,
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.78),
                         fontSize: 12,
@@ -186,7 +187,9 @@ class WelcomePanel extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        isSignUp ? 'SIGN UP' : 'SIGN IN',
+                        isSignUp
+                            ? AppLocalizations.of(context).signUpLink.toUpperCase()
+                            : AppLocalizations.of(context).signInLink.toUpperCase(),
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,

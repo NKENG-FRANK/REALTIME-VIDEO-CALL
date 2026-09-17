@@ -6,7 +6,7 @@ import '../../../../config/theme/app_colors.dart';
 /// decline/accept buttons, and audio waveform animation.
 class IncomingCallPage extends StatefulWidget {
   final String callerName;
-  final String callerEmail;
+  final String callerMatricule;
   final String callerInitials;
   final Color callerColor;
   final bool isVideoCall;
@@ -14,7 +14,7 @@ class IncomingCallPage extends StatefulWidget {
   const IncomingCallPage({
     Key? key,
     this.callerName = 'Sarah Chen',
-    this.callerEmail = 'sarah@designco.io',
+    this.callerMatricule = 'S00847102',
     this.callerInitials = 'SC',
     this.callerColor = const Color(0xFF8752F4),
     this.isVideoCall = true,
@@ -86,9 +86,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 ),
               ),
               const SizedBox(height: 8),
-              // Caller email
+              // Caller matricule
               Text(
-                widget.callerEmail,
+                widget.callerMatricule,
                 style: TextStyle(
                   color: AppColors.textMuted.withOpacity(0.8),
                   fontSize: 12,

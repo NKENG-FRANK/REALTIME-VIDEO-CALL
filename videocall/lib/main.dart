@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'config/theme/app_theme.dart';
-import 'ui/home_page.dart';
-// Duplicate import removed
+import 'core/l10n/app_localizations.dart';
+import 'core/l10n/app_localizations_delegate.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/calls/presentation/controllers/calls_controller.dart';
 import 'features/contacts/presentation/controllers/contacts_controller.dart';
@@ -32,20 +33,45 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ContactsController()),
         ChangeNotifierProvider(create: (_) => SettingsController()),
       ],
-      child: MaterialApp(
-        title: 'Callwave',
-        theme: AppTheme.lightTheme(),
-        home: const AuthPage(),
-        debugShowCheckedModeBanner: false,
-        routes: {
-          '/auth': (context) => const AuthPage(),
-          '/calls': (context) => const CallsHistoryPage(),
-          '/contacts': (context) => const ContactsPage(),
-          '/settings': (context) => const SettingsPage(),
-          '/incoming-call': (context) => const IncomingCallPage(),
-          '/connecting': (context) => const ConnectingPage(),
-          '/call': (context) => const CallPage(),
-          '/call-ended': (context) => const CallEndedPage(),
+      // Consumer listens to SettingsController so locale updates immediately
+      // when the user changes the language in Settings.
+      child: Consumer<SettingsController>(
+        builder: (context, settingsCtrl, _) {
+          final languageSetting = settingsCtrl.settings.language; // 'French' | 'English'
+          final locale = languageSetting == 'English'
+              ? const Locale('en')
+              : const Locale('fr');
+
+          return MaterialApp(
+            title: 'Callwave',
+            theme: AppTheme.lightTheme(),
+
+            // ── Localization ─────────────────────────────────────────────────
+            locale: locale,
+            supportedLocales: const [
+              Locale('fr'), // French (default)
+              Locale('en'), // English
+            ],
+            localizationsDelegates: const [
+              AppLocalizationsDelegate(),
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+
+            home: const AuthPage(),
+            debugShowCheckedModeBanner: false,
+            routes: {
+              '/auth': (context) => const AuthPage(),
+              '/calls': (context) => const CallsHistoryPage(),
+              '/contacts': (context) => const ContactsPage(),
+              '/settings': (context) => const SettingsPage(),
+              '/incoming-call': (context) => const IncomingCallPage(),
+              '/connecting': (context) => const ConnectingPage(),
+              '/call': (context) => const CallPage(),
+              '/call-ended': (context) => const CallEndedPage(),
+            },
+          );
         },
       ),
     );

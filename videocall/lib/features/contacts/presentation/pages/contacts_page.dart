@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../domain/models/contact.dart';
 import '../controllers/contacts_controller.dart';
 import '../../../settings/presentation/controllers/settings_controller.dart';
@@ -17,7 +19,7 @@ class ContactsPage extends StatefulWidget {
 class _Contact {
   const _Contact({
     required this.name,
-    required this.email,
+    required this.matricule,
     required this.status,
     required this.initials,
     required this.color,
@@ -27,7 +29,7 @@ class _Contact {
   });
 
   final String name;
-  final String email;
+  final String matricule;
   final String status;
   final String initials;
   final Color color;
@@ -44,28 +46,28 @@ class _ContactsPageState extends State<ContactsPage> {
   static const _contacts = [
     _Contact(
       name: 'James Liu',
-      email: 'james@company.com',
+      matricule: 'M00984521',
       status: 'Away',
       initials: 'JL',
       color: Color(0xFF159AB5),
     ),
     _Contact(
       name: 'Alex Morgan',
-      email: 'alex@company.com',
+      matricule: 'A00123948',
       status: 'Offline',
       initials: 'AM',
       color: Color(0xFF7B58F5),
     ),
     _Contact(
       name: 'Ryan Kim',
-      email: 'ryan@company.com',
+      matricule: 'R00847102',
       status: 'Offline',
       initials: 'RK',
       color: Color(0xFFE31845),
     ),
     _Contact(
       name: 'Design Team',
-      email: 'team@company.com',
+      matricule: 'D00994120',
       status: '5 participants',
       initials: 'DT',
       color: AppColors.primary,
@@ -74,7 +76,7 @@ class _ContactsPageState extends State<ContactsPage> {
     ),
     _Contact(
       name: 'Engineering',
-      email: 'engineering@company.com',
+      matricule: 'E00389102',
       status: '9 participants',
       initials: 'EN',
       color: Color(0xFFFFA00D),
@@ -83,7 +85,7 @@ class _ContactsPageState extends State<ContactsPage> {
     ),
     _Contact(
       name: 'Emma Stone',
-      email: 'emma@company.com',
+      matricule: 'E00582910',
       status: 'Offline',
       initials: 'ES',
       color: Color(0xFF10A47D),
@@ -93,7 +95,7 @@ class _ContactsPageState extends State<ContactsPage> {
   static const _onlineContacts = [
     _Contact(
       name: 'Sarah Chen',
-      email: 'sarah@company.com',
+      matricule: 'S00847102',
       status: 'Online',
       initials: 'SC',
       color: Color(0xFF8752F4),
@@ -101,7 +103,7 @@ class _ContactsPageState extends State<ContactsPage> {
     ),
     _Contact(
       name: 'Marcus Webb',
-      email: 'marcus@company.com',
+      matricule: 'M00001092',
       status: 'Online',
       initials: 'MW',
       color: Color(0xFF10A47D),
@@ -109,7 +111,7 @@ class _ContactsPageState extends State<ContactsPage> {
     ),
     _Contact(
       name: 'Priya Nair',
-      email: 'priya@company.com',
+      matricule: 'P00472910',
       status: 'Online',
       initials: 'PN',
       color: Color(0xFFFFA00D),
@@ -129,7 +131,7 @@ class _ContactsPageState extends State<ContactsPage> {
       final matchesSearch =
           query.isEmpty ||
           contact.name.toLowerCase().contains(query) ||
-          contact.email.toLowerCase().contains(query);
+          contact.matricule.toLowerCase().contains(query);
       final matchesFilter =
           _selectedFilter == 'All contacts' ||
           (_selectedFilter == 'People' && !contact.group) ||
@@ -212,9 +214,9 @@ class _ContactsPageState extends State<ContactsPage> {
           ),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           const SizedBox(height: 14),
-          _navItem(Icons.phone, 'Calls', route: '/calls'),
-          _navItem(Icons.people_alt, 'Contacts', selected: true, route: '/contacts'),
-          _navItem(Icons.settings, 'Settings', route: '/settings'),
+          _navItem(Icons.phone, AppLocalizations.of(context).navCalls, route: '/calls'),
+          _navItem(Icons.people_alt, AppLocalizations.of(context).navContacts, selected: true, route: '/contacts'),
+          _navItem(Icons.settings, AppLocalizations.of(context).navSettings, route: '/settings'),
           const Spacer(),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           Padding(
@@ -334,9 +336,9 @@ class _ContactsPageState extends State<ContactsPage> {
                     _buildTabs(controller),
                     const SizedBox(height: 16),
                     if (controller.onlineContacts.isNotEmpty) ...[
-                      const Text(
-                        'ONLINE NOW',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context).online.toUpperCase(),
+                        style: const TextStyle(
                           color: AppColors.primary,
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
@@ -346,9 +348,9 @@ class _ContactsPageState extends State<ContactsPage> {
                       _buildOnlineRow(controller),
                       const SizedBox(height: 21),
                     ],
-                    const Text(
-                      'ALL CONTACTS',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context).allContacts.toUpperCase(),
+                      style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
@@ -374,40 +376,48 @@ class _ContactsPageState extends State<ContactsPage> {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Contacts',
-                  style: TextStyle(
+                  AppLocalizations.of(context).contactsTitle,
+                  style: const TextStyle(
                     color: AppColors.primary,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  'People and teams you can call',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  AppLocalizations.of(context).contactsSubtitle,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                 ),
               ],
             ),
           ),
           SmoothActionButton(
-            icon: Icons.add,
-            label: 'New Contact',
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.primary,
-            onPressed: () => _showAddContactDialog(context, controller),
+            icon: Icons.groups_rounded,
+            label: AppLocalizations.of(context).startGroupCall,
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            onPressed: () => showGroupCallLaunchDialog(context),
           ),
           const SizedBox(width: 9),
           SmoothActionButton(
-            icon: Icons.video_call,
-            label: 'New Call',
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            onPressed: () => Navigator.of(context).pushNamed('/connecting'),
+            icon: Icons.person_add_alt_1_rounded,
+            label: AppLocalizations.of(context).oneToOneCall,
+            backgroundColor: AppColors.accent,
+            foregroundColor: AppColors.primary,
+            onPressed: () => showOneToOneCallLaunchDialog(context),
+          ),
+          const SizedBox(width: 9),
+          SmoothActionButton(
+            icon: Icons.person_add,
+            label: AppLocalizations.of(context).addContact,
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primary,
+            onPressed: () => _showAddContactDialog(context, controller),
           ),
         ],
       ),
@@ -423,7 +433,7 @@ class _ContactsPageState extends State<ContactsPage> {
             onChanged: (val) => controller.setSearchQuery(val),
             style: const TextStyle(fontSize: 11, color: AppColors.textPrimary),
             decoration: InputDecoration(
-              hintText: 'Search contacts by name, email, or phone...',
+              hintText: AppLocalizations.of(context).searchContacts,
               hintStyle: const TextStyle(
                 fontSize: 11,
                 color: AppColors.textMuted,
@@ -466,10 +476,10 @@ class _ContactsPageState extends State<ContactsPage> {
                 borderSide: const BorderSide(color: Color(0xFFE0EAE2)),
               ),
             ),
-            items: const [
-              DropdownMenuItem(value: 'All contacts', child: Text('All contacts')),
-              DropdownMenuItem(value: 'Online', child: Text('Online')),
-              DropdownMenuItem(value: 'Offline', child: Text('Offline')),
+            items: [
+              DropdownMenuItem(value: 'All contacts', child: Text(AppLocalizations.of(context).allContacts)),
+              DropdownMenuItem(value: 'Online', child: Text(AppLocalizations.of(context).online)),
+              DropdownMenuItem(value: 'Offline', child: Text(AppLocalizations.of(context).offline)),
             ],
           ),
         ),
@@ -616,7 +626,7 @@ class _ContactsPageState extends State<ContactsPage> {
       child: const Row(
         children: [
           Expanded(flex: 3, child: Text('NAME', style: _headerStyle)),
-          Expanded(flex: 3, child: Text('EMAIL', style: _headerStyle)),
+          Expanded(flex: 3, child: Text('MATRICULE', style: _headerStyle)),
           Expanded(flex: 2, child: Text('STATUS', style: _headerStyle)),
           SizedBox(width: 34),
         ],
@@ -656,7 +666,7 @@ class _ContactsPageState extends State<ContactsPage> {
           Expanded(
             flex: 3,
             child: Text(
-              contact.email,
+              contact.matricule,
               style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
             ),
           ),
@@ -706,7 +716,7 @@ class _ContactsPageState extends State<ContactsPage> {
 
   void _showAddContactDialog(BuildContext context, ContactsController controller) {
     final nameCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
+    final matriculeCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -721,8 +731,11 @@ class _ContactsPageState extends State<ContactsPage> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email', hintText: 'alex@company.com'),
+              controller: matriculeCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Matricule',
+                hintText: 'e.g. M00984521 (>8 chars, starting/ending with a letter)',
+              ),
             ),
           ],
         ),
@@ -735,14 +748,23 @@ class _ContactsPageState extends State<ContactsPage> {
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
             onPressed: () {
               final name = nameCtrl.text.trim();
-              final email = emailCtrl.text.trim();
+              final matricule = matriculeCtrl.text.trim();
               if (name.isNotEmpty) {
+                if (!Contact.isValidMatricule(matricule)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Matricule must be more than 8 characters and start or end with a letter (e.g. M00984521).'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                  return;
+                }
                 final initials = name.split(' ').map((e) => e[0].toUpperCase()).take(2).join();
                 controller.addContact(
                   Contact(
                     id: DateTime.now().millisecondsSinceEpoch.toString(),
                     name: name,
-                    email: email.isEmpty ? '$name@company.com' : email,
+                    matricule: matricule,
                     status: 'Available',
                     initials: initials,
                     colorValue: 0xFF159AB5,
@@ -854,11 +876,12 @@ class _OnlineLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        Text('•', style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
-        SizedBox(width: 3),
-        Text('Online', style: TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
+        const Text('•', style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
+        const SizedBox(width: 3),
+        Text(AppLocalizations.of(context).online,
+            style: const TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
       ],
     );
   }

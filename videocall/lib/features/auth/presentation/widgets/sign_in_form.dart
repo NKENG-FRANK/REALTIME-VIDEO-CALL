@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 
 class SignInForm extends StatelessWidget {
   final String matricule;
@@ -35,8 +36,8 @@ class SignInForm extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'Sign In',
-            style: TextStyle(
+            AppLocalizations.of(context).signIn,
+            style: const TextStyle(
               color: AppColors.primary,
               fontSize: 30,
               fontWeight: FontWeight.w900,
@@ -54,7 +55,7 @@ class SignInForm extends StatelessWidget {
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: 'Matricule',
+              hintText: AppLocalizations.of(context).matriculePlaceholder,
             ),
           ),
           const SizedBox(height: 11),
@@ -81,7 +82,7 @@ class SignInForm extends StatelessWidget {
                   ),
                 ),
               ),
-              hintText: 'Password',
+              hintText: AppLocalizations.of(context).passwordPlaceholder,
             ),
           ),
           const SizedBox(height: 13),
@@ -151,9 +152,9 @@ class SignInForm extends StatelessWidget {
                       strokeWidth: 2,
                     ),
                   )
-                : const Text(
-                    'SIGN IN',
-                    style: TextStyle(
+                : Text(
+                    AppLocalizations.of(context).signIn.toUpperCase(),
+                    style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.07,
@@ -167,9 +168,9 @@ class SignInForm extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
-                "Don't have an account? ",
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context).dontHaveAccount,
+                style: const TextStyle(
                   fontSize: 10,
                   color: Color(0xFFA0A7A2),
                 ),
@@ -181,9 +182,9 @@ class SignInForm extends StatelessWidget {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text(
-                  'Create Account',
-                  style: TextStyle(
+                child: Text(
+                  AppLocalizations.of(context).signUpLink,
+                  style: const TextStyle(
                     fontSize: 10,
                     color: AppColors.primary,
                     fontWeight: FontWeight.w700,

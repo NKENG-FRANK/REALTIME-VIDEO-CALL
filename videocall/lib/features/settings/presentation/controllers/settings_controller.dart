@@ -43,10 +43,27 @@ class SettingsController extends ChangeNotifier {
     await _saveToStorage();
   }
 
-  Future<void> updateProfile({String? displayName, String? status}) async {
+  Future<void> updateProfile({
+    String? displayName,
+    String? status,
+    String? matricule,
+    String? ministry,
+    String? department,
+    String? division,
+    String? positionTitle,
+    String? officeLocation,
+    bool? hidePhoneEmail,
+  }) async {
     _settings = _settings.copyWith(
       displayName: displayName,
       status: status,
+      matricule: matricule,
+      ministry: ministry,
+      department: department,
+      division: division,
+      positionTitle: positionTitle,
+      officeLocation: officeLocation,
+      hidePhoneEmail: hidePhoneEmail,
     );
     notifyListeners();
     await _saveToStorage();
@@ -57,12 +74,14 @@ class SettingsController extends ChangeNotifier {
     bool? micOnJoin,
     bool? noiseSuppression,
     String? callQuality,
+    bool? lowDataMode,
   }) async {
     _settings = _settings.copyWith(
       cameraOnJoin: cameraOnJoin,
       micOnJoin: micOnJoin,
       noiseSuppression: noiseSuppression,
       callQuality: callQuality,
+      lowDataMode: lowDataMode,
     );
     notifyListeners();
     await _saveToStorage();
@@ -84,11 +103,13 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> updateAppearance({
     String? theme,
+    String? language,
     bool? animatedBg,
     bool? reduceMotion,
   }) async {
     _settings = _settings.copyWith(
       theme: theme,
+      language: language,
       animatedBg: animatedBg,
       reduceMotion: reduceMotion,
     );

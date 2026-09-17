@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../contacts/domain/models/contact.dart';
 import '../../domain/models/user_settings.dart';
 import '../controllers/settings_controller.dart';
 
@@ -111,9 +113,9 @@ class SettingsPage extends StatelessWidget {
           ),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           const SizedBox(height: 14),
-          _appNavItem(context, Icons.phone, 'Calls', selected: false, route: '/calls'),
-          _appNavItem(context, Icons.people_alt, 'Contacts', selected: false, route: '/contacts'),
-          _appNavItem(context, Icons.settings, 'Settings', selected: true, route: '/settings'),
+          _appNavItem(context, Icons.phone, AppLocalizations.of(context).navCalls, selected: false, route: '/calls'),
+          _appNavItem(context, Icons.people_alt, AppLocalizations.of(context).navContacts, selected: false, route: '/contacts'),
+          _appNavItem(context, Icons.settings, AppLocalizations.of(context).navSettings, selected: true, route: '/settings'),
           const Spacer(),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           Padding(
@@ -224,23 +226,22 @@ class SettingsPage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Settings',
-                  style: TextStyle(
+                  AppLocalizations.of(context).settingsTitle,
+                  style: const TextStyle(
                     color: AppColors.primary,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  'Manage your Callwave experience',
-                  style:
-                      TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  AppLocalizations.of(context).settingsSubtitle,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                 ),
               ],
             ),
@@ -248,9 +249,9 @@ class SettingsPage extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Settings saved successfully!'),
-                  duration: Duration(seconds: 2),
+                SnackBar(
+                  content: Text(AppLocalizations.of(context).savedSuccessfully),
+                  duration: const Duration(seconds: 2),
                   backgroundColor: AppColors.primary,
                 ),
               );
@@ -266,7 +267,7 @@ class SettingsPage extends StatelessWidget {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Save Changes'),
+            child: Text(AppLocalizations.of(context).saveChanges),
           ),
         ],
       ),
@@ -291,24 +292,101 @@ class SettingsPage extends StatelessWidget {
                   children: [
                     // Profile section
                     _buildSectionCard(
-                      title: 'Profile',
-                      subtitle: 'How other Callwave users see you.',
+                      title: AppLocalizations.of(context).profileSection,
+                      subtitle: AppLocalizations.of(context).profileSubtitle,
                       children: [
-                        _buildProfileRow(s),
+                        _buildProfileRow(s, context),
                         const _SectionDivider(),
                         _EditableTextSetting(
-                          title: 'Display name',
-                          subtitle: 'The name shown during calls and in contacts.',
+                          title: AppLocalizations.of(context).displayName,
+                          subtitle: AppLocalizations.of(context).displayNameSubtitle,
                           value: s.displayName,
                           onChanged: (v) => controller.updateProfile(displayName: v),
                         ),
                         const _SectionDivider(),
                         _buildDropdownSetting(
-                          title: 'Status',
-                          subtitle: "Let people know when you're available.",
+                          title: AppLocalizations.of(context).statusLabel,
+                          subtitle: AppLocalizations.of(context).statusSubtitle,
                           value: s.status,
                           options: ['Available', 'Busy', 'Away', 'Do Not Disturb'],
+                          displayOptions: [
+                            AppLocalizations.of(context).statusAvailable,
+                            AppLocalizations.of(context).statusBusy,
+                            AppLocalizations.of(context).statusAway,
+                            AppLocalizations.of(context).statusDnd,
+                          ],
                           onChanged: (v) => controller.updateProfile(status: v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Organizational Information section
+                    _buildSectionCard(
+                      title: AppLocalizations.of(context).orgSection,
+                      subtitle: AppLocalizations.of(context).orgSubtitle,
+                      children: [
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).matriculeId,
+                          subtitle: AppLocalizations.of(context).matriculeIdSubtitle,
+                          value: s.matricule,
+                          validator: (val) {
+                            if (val.trim().isNotEmpty && !Contact.isValidMatricule(val)) {
+                              return AppLocalizations.of(context).matriculeValidationError;
+                            }
+                            return null;
+                          },
+                          onChanged: (v) => controller.updateProfile(matricule: v),
+                        ),
+                        const _SectionDivider(),
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).ministryOrg,
+                          subtitle: AppLocalizations.of(context).ministryOrgSubtitle,
+                          value: s.ministry,
+                          onChanged: (v) => controller.updateProfile(ministry: v),
+                        ),
+                        const _SectionDivider(),
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).department,
+                          subtitle: AppLocalizations.of(context).departmentSubtitle,
+                          value: s.department,
+                          onChanged: (v) => controller.updateProfile(department: v),
+                        ),
+                        const _SectionDivider(),
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).division,
+                          subtitle: AppLocalizations.of(context).divisionSubtitle,
+                          value: s.division,
+                          onChanged: (v) => controller.updateProfile(division: v),
+                        ),
+                        const _SectionDivider(),
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).positionTitle,
+                          subtitle: AppLocalizations.of(context).positionTitleSubtitle,
+                          value: s.positionTitle,
+                          onChanged: (v) => controller.updateProfile(positionTitle: v),
+                        ),
+                        const _SectionDivider(),
+                        _EditableTextSetting(
+                          title: AppLocalizations.of(context).officeLocation,
+                          subtitle: AppLocalizations.of(context).officeLocationSubtitle,
+                          value: s.officeLocation,
+                          onChanged: (v) => controller.updateProfile(officeLocation: v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Directory Privacy section
+                    _buildSectionCard(
+                      title: AppLocalizations.of(context).privacySection,
+                      subtitle: AppLocalizations.of(context).privacySubtitle,
+                      children: [
+                        _buildToggleSetting(
+                          title: AppLocalizations.of(context).hidePhoneMatricule,
+                          subtitle: AppLocalizations.of(context).hidePhoneMatriculeSubtitle,
+                          value: s.hidePhoneEmail,
+                          onChanged: (v) => controller.updateProfile(hidePhoneEmail: v),
                         ),
                       ],
                     ),
@@ -316,36 +394,40 @@ class SettingsPage extends StatelessWidget {
 
                     // Calling section
                     _buildSectionCard(
-                      title: 'Calling',
-                      subtitle: 'Configure your audio and video call behavior.',
+                      title: AppLocalizations.of(context).callingSection,
+                      subtitle: AppLocalizations.of(context).callingSubtitle,
                       children: [
                         _buildToggleSetting(
-                          title: 'Camera on when joining',
-                          subtitle:
-                              'Automatically enable your camera when starting a video call.',
+                          title: AppLocalizations.of(context).cameraOnJoin,
+                          subtitle: AppLocalizations.of(context).cameraOnJoinSubtitle,
                           value: s.cameraOnJoin,
                           onChanged: (v) => controller.updateCalling(cameraOnJoin: v),
                         ),
                         const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Microphone on when joining',
-                          subtitle:
-                              'Automatically enable your microphone when entering a call.',
+                          title: AppLocalizations.of(context).micOnJoin,
+                          subtitle: AppLocalizations.of(context).micOnJoinSubtitle,
                           value: s.micOnJoin,
                           onChanged: (v) => controller.updateCalling(micOnJoin: v),
                         ),
                         const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Noise suppression',
-                          subtitle: 'Reduce background sounds during calls.',
+                          title: AppLocalizations.of(context).noiseSuppression,
+                          subtitle: AppLocalizations.of(context).noiseSuppressionSubtitle,
                           value: s.noiseSuppression,
                           onChanged: (v) => controller.updateCalling(noiseSuppression: v),
                         ),
                         const _SectionDivider(),
+                        _buildToggleSetting(
+                          title: AppLocalizations.of(context).lowDataMode,
+                          subtitle: AppLocalizations.of(context).lowDataModeSubtitle,
+                          value: s.lowDataMode,
+                          onChanged: (v) => controller.updateCalling(lowDataMode: v),
+                        ),
+                        const _SectionDivider(),
                         _buildDropdownSetting(
-                          title: 'Default call quality',
-                          subtitle:
-                              'Choose how aggressively Callwave adapts quality.',
+                          title: AppLocalizations.of(context).defaultCallQuality,
+                          subtitle: AppLocalizations.of(context).defaultCallQualitySubtitle,
                           value: s.callQuality,
                           options: ['Auto', 'High', 'Medium', 'Low'],
                           onChanged: (v) => controller.updateCalling(callQuality: v),
@@ -356,27 +438,26 @@ class SettingsPage extends StatelessWidget {
 
                     // Notifications section
                     _buildSectionCard(
-                      title: 'Notifications',
-                      subtitle: 'Control how Callwave alerts you.',
+                      title: AppLocalizations.of(context).notificationsSection,
+                      subtitle: AppLocalizations.of(context).notificationsSubtitle,
                       children: [
                         _buildToggleSetting(
-                          title: 'Incoming call notifications',
-                          subtitle:
-                              'Show notifications for incoming audio and video calls.',
+                          title: AppLocalizations.of(context).incomingCallNotif,
+                          subtitle: AppLocalizations.of(context).incomingCallNotifSubtitle,
                           value: s.incomingCallNotif,
                           onChanged: (v) => controller.updateNotifications(incomingCallNotif: v),
                         ),
                         const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Missed call notifications',
-                          subtitle: 'Notify you when you miss a call.',
+                          title: AppLocalizations.of(context).missedCallNotif,
+                          subtitle: AppLocalizations.of(context).missedCallNotifSubtitle,
                           value: s.missedCallNotif,
                           onChanged: (v) => controller.updateNotifications(missedCallNotif: v),
                         ),
                         const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Message notifications',
-                          subtitle: 'Show alerts for new chat messages.',
+                          title: AppLocalizations.of(context).messageNotif,
+                          subtitle: AppLocalizations.of(context).messageNotifSubtitle,
                           value: s.messageNotif,
                           onChanged: (v) => controller.updateNotifications(messageNotif: v),
                         ),
@@ -386,28 +467,44 @@ class SettingsPage extends StatelessWidget {
 
                     // Appearance section
                     _buildSectionCard(
-                      title: 'Appearance',
-                      subtitle: 'Customize the Callwave interface.',
+                      title: AppLocalizations.of(context).appearanceSection,
+                      subtitle: AppLocalizations.of(context).appearanceSubtitle,
                       children: [
                         _buildDropdownSetting(
-                          title: 'Theme',
-                          subtitle: 'Choose how Callwave looks.',
+                          title: AppLocalizations.of(context).themeLabel,
+                          subtitle: AppLocalizations.of(context).themeSubtitle,
                           value: s.theme,
                           options: ['Light', 'Dark', 'System'],
+                          displayOptions: [
+                            AppLocalizations.of(context).themeLight,
+                            AppLocalizations.of(context).themeDark,
+                            AppLocalizations.of(context).themeSystem,
+                          ],
                           onChanged: (v) => controller.updateAppearance(theme: v),
                         ),
                         const _SectionDivider(),
+                        _buildDropdownSetting(
+                          title: AppLocalizations.of(context).languageLabel,
+                          subtitle: AppLocalizations.of(context).languageSubtitle,
+                          value: s.language,
+                          options: ['French', 'English'],
+                          displayOptions: [
+                            AppLocalizations.of(context).languageFrench,
+                            AppLocalizations.of(context).languageEnglish,
+                          ],
+                          onChanged: (v) => controller.updateAppearance(language: v),
+                        ),
+                        const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Animated background',
-                          subtitle:
-                              'Show the soft animated shapes throughout the interface.',
+                          title: AppLocalizations.of(context).animatedBg,
+                          subtitle: AppLocalizations.of(context).animatedBgSubtitle,
                           value: s.animatedBg,
                           onChanged: (v) => controller.updateAppearance(animatedBg: v),
                         ),
                         const _SectionDivider(),
                         _buildToggleSetting(
-                          title: 'Reduce motion',
-                          subtitle: 'Reduce background and interface animations.',
+                          title: AppLocalizations.of(context).reduceMotion,
+                          subtitle: AppLocalizations.of(context).reduceMotionSubtitle,
                           value: s.reduceMotion,
                           onChanged: (v) => controller.updateAppearance(reduceMotion: v),
                         ),
@@ -474,7 +571,7 @@ class SettingsPage extends StatelessWidget {
 
   // ── Individual setting builders ──
 
-  Widget _buildProfileRow(UserSettings settings) {
+  Widget _buildProfileRow(UserSettings settings, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
       child: Row(
@@ -553,9 +650,9 @@ class SettingsPage extends StatelessWidget {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text(
-              'Change photo',
-              style: TextStyle(
+            child: Text(
+              AppLocalizations.of(context).changePhoto,
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -616,8 +713,10 @@ class SettingsPage extends StatelessWidget {
     required String subtitle,
     required String value,
     required List<String> options,
+    List<String>? displayOptions, // localised labels, parallel to options
     required ValueChanged<String> onChanged,
   }) {
+    final displays = displayOptions ?? options;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
       child: Row(
@@ -672,10 +771,12 @@ class SettingsPage extends StatelessWidget {
                       const BorderSide(color: Color(0xFFE0EAE2)),
                 ),
               ),
-              items: options
-                  .map((o) =>
-                      DropdownMenuItem(value: o, child: Text(o)))
-                  .toList(),
+              items: List.generate(options.length, (i) =>
+                  DropdownMenuItem(
+                    value: options[i],
+                    child: Text(displays[i]),
+                  )
+              ),
             ),
           ),
         ],
@@ -724,13 +825,14 @@ class _OnlineLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final l10n = AppLocalizations.of(context);
+    return Row(
       children: [
-        Text('•',
+        const Text('•',
             style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
-        SizedBox(width: 3),
-        Text('Online',
-            style: TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
+        const SizedBox(width: 3),
+        Text(l10n.online,
+            style: const TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
       ],
     );
   }
@@ -755,6 +857,7 @@ class _EditableTextSetting extends StatefulWidget {
   final String subtitle;
   final String value;
   final ValueChanged<String> onChanged;
+  final String? Function(String)? validator;
 
   const _EditableTextSetting({
     Key? key,
@@ -762,6 +865,7 @@ class _EditableTextSetting extends StatefulWidget {
     required this.subtitle,
     required this.value,
     required this.onChanged,
+    this.validator,
   }) : super(key: key);
 
   @override
@@ -771,6 +875,7 @@ class _EditableTextSetting extends StatefulWidget {
 class _EditableTextSettingState extends State<_EditableTextSetting> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
+  String? _errorText;
 
   @override
   void initState() {
@@ -792,6 +897,17 @@ class _EditableTextSettingState extends State<_EditableTextSetting> {
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _handleChange(String val) {
+    if (widget.validator != null) {
+      setState(() {
+        _errorText = widget.validator!(val);
+      });
+    }
+    if (_errorText == null) {
+      widget.onChanged(val);
+    }
   }
 
   @override
@@ -820,6 +936,17 @@ class _EditableTextSettingState extends State<_EditableTextSetting> {
                     color: AppColors.textMuted.withValues(alpha: 0.8),
                   ),
                 ),
+                if (_errorText != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _errorText!,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -829,8 +956,8 @@ class _EditableTextSettingState extends State<_EditableTextSetting> {
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
-              onChanged: widget.onChanged,
-              onSubmitted: widget.onChanged,
+              onChanged: _handleChange,
+              onSubmitted: _handleChange,
               style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.textPrimary,
@@ -841,18 +968,18 @@ class _EditableTextSettingState extends State<_EditableTextSetting> {
                     horizontal: 12, vertical: 10),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.9),
-                hintText: 'Enter username',
+                hintText: 'Enter text',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFCDE8D8)),
+                  borderSide: BorderSide(color: _errorText != null ? Colors.redAccent : const Color(0xFFCDE8D8)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFD0E0D4)),
+                  borderSide: BorderSide(color: _errorText != null ? Colors.redAccent : const Color(0xFFD0E0D4)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  borderSide: BorderSide(color: _errorText != null ? Colors.redAccent : AppColors.primary, width: 1.5),
                 ),
               ),
             ),
