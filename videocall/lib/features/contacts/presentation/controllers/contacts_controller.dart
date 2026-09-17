@@ -25,7 +25,7 @@ class ContactsController extends ChangeNotifier {
     return _contacts.where((contact) {
       final matchesSearch = query.isEmpty ||
           contact.name.toLowerCase().contains(query) ||
-          contact.email.toLowerCase().contains(query);
+          contact.matricule.toLowerCase().contains(query);
       final matchesFilter = _selectedFilter == 'All contacts' ||
           (_selectedFilter == 'Online' && contact.online) ||
           (_selectedFilter == 'Offline' && !contact.online);
@@ -53,12 +53,12 @@ class ContactsController extends ChangeNotifier {
             .map((item) => Contact.fromJson(jsonDecode(item)))
             .toList();
       } else {
-        // Initial seed data
+        // Initial seed data with valid matricules (>8 chars, starts with letter)
         _contacts = [
           const Contact(
             id: '1',
             name: 'James Liu',
-            email: 'james@company.com',
+            matricule: 'M00984521',
             status: 'Away',
             initials: 'JL',
             colorValue: 0xFF159AB5,
@@ -67,7 +67,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '2',
             name: 'Alex Morgan',
-            email: 'alex@company.com',
+            matricule: 'A00123948',
             status: 'Available',
             initials: 'AM',
             colorValue: 0xFF8752F4,
@@ -77,7 +77,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '3',
             name: 'Sarah Chen',
-            email: 'sarah@company.com',
+            matricule: 'S00847102',
             status: 'Available',
             initials: 'SC',
             colorValue: 0xFF2D5016,
@@ -87,7 +87,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '4',
             name: 'Marcus Webb',
-            email: 'marcus@company.com',
+            matricule: 'M00001092',
             status: 'Busy',
             initials: 'MW',
             colorValue: 0xFFFFA00D,
@@ -96,7 +96,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '5',
             name: 'Design Team',
-            email: 'design@company.com',
+            matricule: 'D00994120',
             status: 'Group channel',
             initials: 'DT',
             colorValue: 0xFFE31845,
@@ -106,7 +106,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '6',
             name: 'Engineering Standup',
-            email: 'eng@company.com',
+            matricule: 'E00389102',
             status: 'Group channel',
             initials: 'ES',
             colorValue: 0xFF159AB5,
@@ -116,7 +116,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '7',
             name: 'Priya Nair',
-            email: 'priya@company.com',
+            matricule: 'P00472910',
             status: 'Offline',
             initials: 'PN',
             colorValue: 0xFF10A47D,
@@ -124,7 +124,7 @@ class ContactsController extends ChangeNotifier {
           const Contact(
             id: '8',
             name: 'Emma Stone',
-            email: 'emma@company.com',
+            matricule: 'E00582910',
             status: 'Available',
             initials: 'ES',
             colorValue: 0xFF8752F4,

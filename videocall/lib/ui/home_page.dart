@@ -3,6 +3,7 @@ import 'package:videocall/ui/sidebar.dart';
 import 'package:videocall/ui/call_list.dart';
 import 'package:videocall/config/theme/app_colors.dart';
 import 'package:videocall/ui/animated_background.dart';
+import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -50,12 +51,12 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _HeaderLeft(),
@@ -71,9 +72,9 @@ class _HeaderLeft extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
+      children: [
         Text('Calls', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.primary)),
         SizedBox(height: 4),
         Text('All your recent calls', style: TextStyle(fontSize: 13, color: Colors.grey)),
@@ -90,21 +91,27 @@ class _HeaderRight extends StatelessWidget {
     return Row(
       children: [
         ElevatedButton.icon(
-          onPressed: () {},
-          icon: Icon(Icons.add, size: 16),
-          label: Text('New Call'),
+          onPressed: () => showGroupCallLaunchDialog(context),
+          icon: const Icon(Icons.groups_rounded, size: 16),
+          label: const Text('Launch Group Call'),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
-        SizedBox(width: 12),
-        IconButton(
-          onPressed: () {},
-          icon: Icon(Icons.settings),
-          color: AppColors.primary,
+        const SizedBox(width: 9),
+        OutlinedButton.icon(
+          onPressed: () => showOneToOneCallLaunchDialog(context),
+          icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+          label: const Text('1-on-1 Call'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primary,
+            side: const BorderSide(color: AppColors.primary),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         ),
       ],
     );

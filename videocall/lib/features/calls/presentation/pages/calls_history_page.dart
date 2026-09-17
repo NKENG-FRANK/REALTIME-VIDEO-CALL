@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../domain/models/call_log.dart';
 import '../controllers/calls_controller.dart';
 import '../../../settings/presentation/controllers/settings_controller.dart';
@@ -120,9 +122,9 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
           ),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           const SizedBox(height: 14),
-          _navItem(Icons.phone, 'Calls', selected: true, route: '/calls'),
-          _navItem(Icons.people_alt, 'Contacts', route: '/contacts'),
-          _navItem(Icons.settings, 'Settings', route: '/settings'),
+          _navItem(Icons.phone, AppLocalizations.of(context).navCalls, selected: true, route: '/calls'),
+          _navItem(Icons.people_alt, AppLocalizations.of(context).navContacts, route: '/contacts'),
+          _navItem(Icons.settings, AppLocalizations.of(context).navSettings, route: '/settings'),
           const Spacer(),
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           Padding(
@@ -262,41 +264,40 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Calls',
-                  style: TextStyle(
+                  AppLocalizations.of(context).callsTitle,
+                  style: const TextStyle(
                     color: AppColors.primary,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  'Recent activity',
-                  style:
-                      TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  AppLocalizations.of(context).callsSubtitle,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                 ),
               ],
             ),
           ),
           SmoothActionButton(
-            icon: Icons.videocam,
-            label: 'New Video Call',
+            icon: Icons.groups_rounded,
+            label: AppLocalizations.of(context).startGroupCall,
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            onPressed: () => Navigator.of(context).pushNamed('/connecting'),
+            onPressed: () => showGroupCallLaunchDialog(context),
           ),
           const SizedBox(width: 9),
           SmoothActionButton(
-            icon: Icons.phone,
-            label: 'Audio Call',
+            icon: Icons.person_add_alt_1_rounded,
+            label: AppLocalizations.of(context).oneToOneCall,
             backgroundColor: AppColors.accent,
             foregroundColor: AppColors.primary,
-            onPressed: () => Navigator.of(context).pushNamed('/call'),
+            onPressed: () => showOneToOneCallLaunchDialog(context),
           ),
         ],
       ),
@@ -309,7 +310,7 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
       onChanged: (val) => controller.setSearchQuery(val),
       style: const TextStyle(fontSize: 11, color: AppColors.textPrimary),
       decoration: InputDecoration(
-        hintText: 'Enter name, email, or room code...',
+        hintText: AppLocalizations.of(context).search,
         hintStyle: const TextStyle(
           fontSize: 11,
           color: AppColors.textMuted,
@@ -410,12 +411,12 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
     }
     final calls = controller.filteredCalls;
     if (calls.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(40),
+      return Padding(
+        padding: const EdgeInsets.all(40),
         child: Center(
           child: Text(
-            'No calls found',
-            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            AppLocalizations.of(context).noCallHistory,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
           ),
         ),
       );
@@ -487,9 +488,9 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
                           color: AppColors.callDecline,
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
-                          'Missed',
-                          style: TextStyle(
+                        child: Text(
+                          AppLocalizations.of(context).missedCall,
+                          style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
@@ -633,13 +634,13 @@ class _OnlineLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        Text('•',
+        const Text('•',
             style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
-        SizedBox(width: 3),
-        Text('Online',
-            style: TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
+        const SizedBox(width: 3),
+        Text(AppLocalizations.of(context).online,
+            style: const TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
       ],
     );
   }
