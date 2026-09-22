@@ -76,6 +76,17 @@ class _CallPageState extends State<CallPage> {
     );
   }
 
+  Future<void> _hangUpAndExit() async {
+    await _callService.endCall();
+    if (mounted) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pushReplacementNamed('/calls');
+      }
+    }
+  }
+
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -87,7 +98,7 @@ class _CallPageState extends State<CallPage> {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _hangUpAndExit,
           ),
           const SizedBox(width: 8),
           Column(
@@ -261,12 +272,7 @@ class _CallPageState extends State<CallPage> {
           icon: Icons.call_end,
           label: 'End',
           isDestructive: true,
-          onTap: () async {
-            await _callService.endCall();
-            if (mounted) {
-              Navigator.of(context).pop();
-            }
-          },
+          onTap: _hangUpAndExit,
         ),
       ],
     );

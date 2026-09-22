@@ -37,9 +37,9 @@ class ParticipantCard extends StatelessWidget {
         ],
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Spacer(),
+          const SizedBox(height: 8),
           // Avatar
           Container(
             width: 44,
@@ -58,7 +58,7 @@ class ParticipantCard extends StatelessWidget {
               ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 10),
           // Name and signal
           Row(
             children: [
