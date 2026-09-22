@@ -8,6 +8,7 @@ import 'package:videocall/features/call/presentation/widgets/call_launcher_dialo
 import '../../domain/models/call_log.dart';
 import '../controllers/calls_controller.dart';
 import '../../../settings/presentation/controllers/settings_controller.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 
 /// Data model for a call history entry.
 class _CallEntry {
@@ -129,10 +130,27 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           Padding(
             padding: const EdgeInsets.all(13),
-            child: Consumer<SettingsController>(
-              builder: (context, settingsCtrl, _) {
-                final displayName = settingsCtrl.settings.displayName;
-                final initials = _getInitials(displayName);
+            child: Consumer<AuthController>(
+              builder: (context, authController, _) {
+                final user = authController.currentUser;
+                final displayName = user != null 
+                    ? (user['display_name'] ?? user['displayName'] ?? user['username'] ?? user['matricule'] ?? 'User') 
+                    : 'User';
+                
+                final String initials;
+                if (user != null) {
+                  final parts = displayName.trim().split(' ');
+                  if (parts.isEmpty || parts.first.isEmpty) {
+                    initials = 'U';
+                  } else if (parts.length == 1) {
+                    initials = parts.first[0].toUpperCase();
+                  } else {
+                    initials = (parts.first[0] + parts.last[0]).toUpperCase();
+                  }
+                } else {
+                  initials = 'ME';
+                }
+
                 return Row(
                   children: [
                     _avatar(initials, AppColors.primary),
@@ -140,6 +158,7 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             displayName,
@@ -151,9 +170,53 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
                             ),
                           ),
                           const SizedBox(height: 3),
-                          const _OnlineLabel(),
+                          if (user != null && user['matricule'] != null)
+                            Text(
+                              user['matricule'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                          else
+                            const _OnlineLabel(),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
+                      tooltip: AppLocalizations.of(context).logout,
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: Text(AppLocalizations.of(context).logoutConfirmTitle),
+                            content: Text(AppLocalizations.of(context).logoutConfirmMessage),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: Text(AppLocalizations.of(context).cancel),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: Text(AppLocalizations.of(context).logout),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed == true && context.mounted) {
+                          authController.signOut();
+                          Navigator.of(context).pushNamedAndRemoveUntil('/auth', (route) => false);
+                        }
+                      },
                     ),
                   ],
                 );

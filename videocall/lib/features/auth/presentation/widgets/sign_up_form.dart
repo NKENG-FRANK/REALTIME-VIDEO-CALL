@@ -7,6 +7,7 @@ class SignUpForm extends StatelessWidget {
   final String matricule;
   final String password;
   final bool showPassword;
+  final String? errorMessage;
   final ValueChanged<String> onFullNameChanged;
   final ValueChanged<String> onMatriculeChanged;
   final ValueChanged<String> onPasswordChanged;
@@ -21,6 +22,7 @@ class SignUpForm extends StatelessWidget {
     required this.matricule,
     required this.password,
     required this.showPassword,
+    this.errorMessage,
     required this.onFullNameChanged,
     required this.onMatriculeChanged,
     required this.onPasswordChanged,
@@ -45,7 +47,36 @@ class SignUpForm extends StatelessWidget {
               height: 1.1,
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 16),
+
+          // On-screen Error Feedback Banner
+          if (errorMessage != null && errorMessage!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDE8E8),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF8B4B4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Color(0xFFE31845), size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      errorMessage!,
+                      style: const TextStyle(
+                        color: Color(0xFF9B1C1C),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Full name field
           TextField(
@@ -69,7 +100,7 @@ class SignUpForm extends StatelessWidget {
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: l10n.matriculePlaceholder,
+              hintText: 'Matricule (e.g. A1234567 or 1234567A)',
             ),
           ),
           const SizedBox(height: 11),
@@ -88,10 +119,11 @@ class SignUpForm extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(right: 11),
                   child: Text(
-                    showPassword ? '◌' : '◉',
+                    showPassword ? 'Hide' : 'Show',
                     style: const TextStyle(
                       color: Color(0xFF9AA29D),
-                      fontSize: 12,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -102,7 +134,7 @@ class SignUpForm extends StatelessWidget {
           const SizedBox(height: 14),
 
           // Terms & conditions
-          Text(
+          const Text(
             "By creating an account, you agree to Callwave's Terms of Service and Privacy Policy.",
             style: TextStyle(
               fontSize: 9,

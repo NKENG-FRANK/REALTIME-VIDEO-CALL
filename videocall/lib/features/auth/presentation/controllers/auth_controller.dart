@@ -1,17 +1,46 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/services/auth_service.dart';
 
 class AuthController extends ChangeNotifier {
+  final AuthService _authService = AuthService();
+
+  /// Optional callback invoked after a successful login/auth-check with the
+  /// user profile map. Use this to seed other controllers (e.g. SettingsController)
+  /// without creating a hard dependency.
+  Function(Map<String, dynamic>)? onUserLoaded;
+
   // UI State
   bool _isSignUp = false;
   bool _isLoading = false;
   bool _showPassword = false;
   bool _rememberMe = true;
   bool _isAuthenticated = false;
+  String? _errorMessage;
 
   // Form data
   String _matricule = '';
   String _password = '';
   String _fullName = '';
+  
+  Map<String, dynamic>? _currentUser;
+
+  AuthController() {
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final token = await AuthService.getToken();
+    if (token != null) {
+      _isAuthenticated = true;
+      _currentUser = await AuthService.getCurrentUser();
+      if (_currentUser != null) {
+        onUserLoaded?.call(_currentUser!);
+      }
+      notifyListeners();
+    }
+  }
 
   // Getters
   bool get isSignUp => _isSignUp;
@@ -19,47 +48,90 @@ class AuthController extends ChangeNotifier {
   bool get showPassword => _showPassword;
   bool get rememberMe => _rememberMe;
   bool get isAuthenticated => _isAuthenticated;
+  String? get errorMessage => _errorMessage;
+  Map<String, dynamic>? get currentUser => _currentUser;
+
+  void updateUserData(Map<String, dynamic> userMap) {
+    _currentUser = userMap;
+    AuthService.getCurrentUser().then((stored) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_data', jsonEncode(userMap));
+    });
+    notifyListeners();
+  }
+
 
   String get matricule => _matricule;
   String get password => _password;
   String get fullName => _fullName;
 
-  // Toggle between Sign In and Sign Up
+  // Validate matricule format: Exactly 8 characters, letter at start or end (e.g., A1234567 or 1234567A)
+  static bool isValidMatricule(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length != 8) return false;
+    final regex = RegExp(r'^(?:[A-Za-z]\d{7}|\d{7}[A-Za-z])$');
+    return regex.hasMatch(trimmed);
+  }
+
   void toggleAuthMode() {
     _isSignUp = !_isSignUp;
+    _errorMessage = null;
     _clearForm();
     notifyListeners();
   }
 
-  // Toggle password visibility
   void togglePasswordVisibility() {
     _showPassword = !_showPassword;
     notifyListeners();
   }
 
-  // Toggle remember me
   void toggleRememberMe() {
     _rememberMe = !_rememberMe;
     notifyListeners();
   }
 
-  // Update form fields
   void updateMatricule(String value) {
     _matricule = value;
+    if (_errorMessage != null) {
+      _errorMessage = null;
+      notifyListeners();
+    }
   }
 
   void updatePassword(String value) {
     _password = value;
+    if (_errorMessage != null) {
+      _errorMessage = null;
+      notifyListeners();
+    }
   }
 
   void updateFullName(String value) {
     _fullName = value;
+    if (_errorMessage != null) {
+      _errorMessage = null;
+      notifyListeners();
+    }
   }
 
-  // Sign In — returns true on success
+  void clearErrorMessage() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  /// Sign In against backend user-management service
   Future<bool> signIn() async {
-    if (_matricule.isEmpty || _password.isEmpty) {
-      print('Matricule and password required');
+    _errorMessage = null;
+
+    if (_matricule.trim().isEmpty || _password.isEmpty) {
+      _errorMessage = 'Matricule and password are required';
+      notifyListeners();
+      return false;
+    }
+
+    if (!isValidMatricule(_matricule)) {
+      _errorMessage = 'Incorrect matricule format (must be 8 chars with 1 letter at start or end, e.g. A1234567)';
+      notifyListeners();
       return false;
     }
 
@@ -67,18 +139,25 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // TODO: Call backend API
-      // await _authService.login(_matricule, _password);
-      print('Sign In: $_matricule');
-      
-      // Simulate network delay
-      await Future.delayed(const Duration(seconds: 2));
+      final result = await _authService.login(_matricule, _password);
 
-      _isAuthenticated = true;
-      notifyListeners();
-      return true;
+      if (result['success'] == true) {
+        _isAuthenticated = true;
+        _errorMessage = null;
+        _currentUser = result['user'];
+        if (_currentUser != null) {
+          onUserLoaded?.call(_currentUser!);
+        }
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Sign in failed';
+        notifyListeners();
+        return false;
+      }
     } catch (e) {
-      print('Sign In Error: $e');
+      _errorMessage = 'Network connection error: $e';
+      notifyListeners();
       return false;
     } finally {
       _isLoading = false;
@@ -86,10 +165,25 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  // Sign Up — returns true on success
+  /// Sign Up against backend user-management service
   Future<bool> signUp() async {
-    if (_fullName.isEmpty || _matricule.isEmpty || _password.isEmpty) {
-      print('All fields required');
+    _errorMessage = null;
+
+    if (_fullName.trim().isEmpty || _matricule.trim().isEmpty || _password.isEmpty) {
+      _errorMessage = 'All fields are required';
+      notifyListeners();
+      return false;
+    }
+
+    if (!isValidMatricule(_matricule)) {
+      _errorMessage = 'Incorrect matricule format (must be 8 chars with 1 letter at start or end, e.g. A1234567)';
+      notifyListeners();
+      return false;
+    }
+
+    if (_password.length < 6) {
+      _errorMessage = 'Password must be at least 6 characters';
+      notifyListeners();
       return false;
     }
 
@@ -97,18 +191,30 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // TODO: Call backend API
-      // await _authService.register(_fullName, _matricule, _password);
-      print('Sign Up: $_fullName, $_matricule');
-      
-      // Simulate network delay
-      await Future.delayed(const Duration(seconds: 2));
+      final nameParts = _fullName.trim().split(' ');
+      final firstName = nameParts.first;
+      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : 'User';
+      final username = _matricule.trim().toLowerCase();
 
-      _isAuthenticated = true;
-      notifyListeners();
-      return true;
+      final result = await _authService.register(
+        username: username,
+        matricule: _matricule.trim(),
+        password: _password,
+        firstName: firstName,
+        lastName: lastName,
+      );
+
+      if (result['success'] == true) {
+        // Auto-login after registration
+        return await signIn();
+      } else {
+        _errorMessage = result['message'] ?? 'Sign up failed';
+        notifyListeners();
+        return false;
+      }
     } catch (e) {
-      print('Sign Up Error: $e');
+      _errorMessage = 'Registration error: $e';
+      notifyListeners();
       return false;
     } finally {
       _isLoading = false;
@@ -116,18 +222,19 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  // Sign out
-  void signOut() {
+  void signOut() async {
+    await AuthService.logout();
     _isAuthenticated = false;
+    _currentUser = null;
     _clearForm();
     notifyListeners();
   }
 
-  // Clear form
   void _clearForm() {
     _matricule = '';
     _password = '';
     _fullName = '';
     _showPassword = false;
+    _errorMessage = null;
   }
 }

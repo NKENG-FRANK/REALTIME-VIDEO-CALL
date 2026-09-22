@@ -22,14 +22,14 @@ class UserSettings {
   final bool hidePhoneEmail;
 
   const UserSettings({
-    this.displayName = 'You',
+    this.displayName = '',
     this.status = 'Available',
     this.matricule = '',
-    this.ministry = 'CENADI',
-    this.department = 'Software Engineering',
-    this.division = 'IT & Telecoms',
-    this.positionTitle = 'Engineer',
-    this.officeLocation = 'Building A, Room 102',
+    this.ministry = '',
+    this.department = '',
+    this.division = '',
+    this.positionTitle = '',
+    this.officeLocation = '',
     this.cameraOnJoin = true,
     this.micOnJoin = true,
     this.noiseSuppression = true,
@@ -118,14 +118,14 @@ class UserSettings {
       };
 
   factory UserSettings.fromJson(Map<String, dynamic> json) => UserSettings(
-        displayName: json['displayName'] as String? ?? 'You',
+        displayName: json['displayName'] as String? ?? '',
         status: json['status'] as String? ?? 'Available',
         matricule: json['matricule'] as String? ?? '',
-        ministry: json['ministry'] as String? ?? 'CENADI',
-        department: json['department'] as String? ?? 'Software Engineering',
-        division: json['division'] as String? ?? 'IT & Telecoms',
-        positionTitle: json['positionTitle'] as String? ?? 'Engineer',
-        officeLocation: json['officeLocation'] as String? ?? 'Building A, Room 102',
+        ministry: json['ministry'] as String? ?? '',
+        department: json['department'] as String? ?? '',
+        division: json['division'] as String? ?? '',
+        positionTitle: json['positionTitle'] as String? ?? '',
+        officeLocation: json['officeLocation'] as String? ?? '',
         cameraOnJoin: json['cameraOnJoin'] as bool? ?? true,
         micOnJoin: json['micOnJoin'] as bool? ?? true,
         noiseSuppression: json['noiseSuppression'] as bool? ?? true,

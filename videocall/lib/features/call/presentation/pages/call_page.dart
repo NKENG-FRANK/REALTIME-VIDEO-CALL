@@ -1,34 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
 import '../widgets/signal_indicator.dart';
 
-/// Data model for a call participant.
-class _Participant {
-  final String name;
-  final String initials;
-  final Color color;
-  final int signal;
-
-  const _Participant({
-    required this.name,
-    required this.initials,
-    required this.color,
-    this.signal = 3,
-  });
-}
-
-/// Active call screen with participant sidebar, main call view,
-/// audio/video toggle, and bottom control bar.
 class CallPage extends StatefulWidget {
   final String callTitle;
+  final String roomId;
+  final String? userToken;
   final int participantCount;
 
   const CallPage({
     Key? key,
-    this.callTitle = 'Design Team',
-    this.participantCount = 5,
+    this.callTitle = '1-on-1 Call',
+    this.roomId = 'demo-room-1',
+    this.userToken,
+    this.participantCount = 2,
   }) : super(key: key);
 
   @override
@@ -36,31 +25,35 @@ class CallPage extends StatefulWidget {
 }
 
 class _CallPageState extends State<CallPage> {
-  bool _isAudioMode = true;
+  late final WebRTCCallService _callService;
 
-  static const _participants = [
-    _Participant(name: 'Sarah Chen', initials: 'SC', color: Color(0xFF8752F4)),
-    _Participant(
-        name: 'Marcus Webb', initials: 'MW', color: Color(0xFF10A47D)),
-    _Participant(
-        name: 'Priya Nair', initials: 'PN', color: Color(0xFFE31845),
-        signal: 3),
-    _Participant(
-        name: 'James Liu', initials: 'JL', color: Color(0xFF6B6B6B),
-        signal: 1),
-    _Participant(
-        name: 'Design Team', initials: 'DT', color: Color(0xFFFFA00D),
-        signal: 3),
-    _Participant(
-        name: 'Engineering', initials: 'ES', color: Color(0xFF10A47D),
-        signal: 2),
-    _Participant(
-        name: 'Alex Morgan', initials: 'AM', color: Color(0xFFFFA00D),
-        signal: 3),
-    _Participant(
-        name: 'Ryan Kim', initials: 'RK', color: Color(0xFFE31845),
-        signal: 2),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _callService = WebRTCCallService();
+    _callService.addListener(_onCallStateChanged);
+    _initializeCall();
+  }
+
+  Future<void> _initializeCall() async {
+    if (widget.userToken != null) {
+      await _callService.initializeSocket(widget.userToken!);
+    }
+    await _callService.joinCallRoom(widget.roomId, isVideoCall: true);
+  }
+
+  void _onCallStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _callService.removeListener(_onCallStateChanged);
+    _callService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,39 +61,16 @@ class _CallPageState extends State<CallPage> {
       backgroundColor: AppColors.callBackground,
       body: Column(
         children: [
-          // Top bar
           _buildTopBar(),
-          // Main content
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isMobile = constraints.maxWidth < 760;
-                if (isMobile) {
-                  return _buildMobileLayout();
-                }
-                return _buildDesktopLayout();
+                return isMobile ? _buildMobileLayout() : _buildDesktopLayout();
               },
             ),
           ),
-          // Bottom control bar
-          CallControls(
-            userName: 'You',
-            userInitials: 'ME',
-            elapsed: '00:11',
-            participantCount: widget.participantCount,
-            controls: [
-              CallControlItem(icon: Icons.mic, label: 'Mute'),
-              CallControlItem(icon: Icons.videocam_off_outlined, label: 'Camera'),
-              CallControlItem(icon: Icons.screen_share_outlined, label: 'Share'),
-              CallControlItem(
-                icon: Icons.call_end,
-                label: 'End',
-                isDestructive: true,
-              ),
-              CallControlItem(icon: Icons.fiber_manual_record, label: 'Record'),
-              CallControlItem(icon: Icons.chat_bubble_outline, label: 'Chat'),
-            ],
-          ),
+          _buildBottomControls(),
         ],
       ),
     );
@@ -108,51 +78,46 @@ class _CallPageState extends State<CallPage> {
 
   Widget _buildTopBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
-        border: const Border(
-          bottom: BorderSide(color: Color(0xFFDCE7DF)),
-        ),
+        color: Colors.white.withOpacity(0.85),
+        border: const Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
       ),
       child: Row(
         children: [
-          // Online dot
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.onlineGreen,
-            ),
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          const SizedBox(width: 10),
-          // Call title
-          Text(
-            '${widget.callTitle} · ${widget.participantCount} participants',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.callTitle,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Room: ${widget.roomId} • ${_callService.callState.name}',
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
           const Spacer(),
-          // Timer
-          Text(
-            '00:11',
-            style: TextStyle(
-              color: AppColors.textMuted.withOpacity(0.8),
-              fontSize: 11,
-            ),
+          IconButton(
+            icon: const Icon(Icons.cameraswitch),
+            tooltip: 'Switch Camera',
+            onPressed: () => _callService.switchCamera(),
           ),
-          const SizedBox(width: 14),
-          // Signal strength
-          const SignalIndicator(
-            strength: 3,
-            showLabel: true,
-            barWidth: 3,
-            maxBarHeight: 13,
-          ),
+          const SizedBox(width: 8),
+          const SignalIndicator(strength: 3, showLabel: true),
         ],
       ),
     );
@@ -161,13 +126,8 @@ class _CallPageState extends State<CallPage> {
   Widget _buildDesktopLayout() {
     return Row(
       children: [
-        // Sidebar with participants
-        SizedBox(
-          width: 360,
-          child: _buildParticipantSidebar(),
-        ),
-        // Main call area
-        Expanded(child: _buildMainCallArea()),
+        SizedBox(width: 320, child: _buildParticipantSidebar()),
+        Expanded(child: _buildMainVideoArea()),
       ],
     );
   }
@@ -175,13 +135,7 @@ class _CallPageState extends State<CallPage> {
   Widget _buildMobileLayout() {
     return Column(
       children: [
-        // Main call area (takes priority on mobile)
-        Expanded(flex: 3, child: _buildMainCallArea()),
-        // Compact participants row
-        SizedBox(
-          height: 100,
-          child: _buildMobileParticipants(),
-        ),
+        Expanded(child: _buildMainVideoArea()),
       ],
     );
   }
@@ -191,228 +145,130 @@ class _CallPageState extends State<CallPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.45),
-        border: const Border(
-          right: BorderSide(color: Color(0xFFDCE7DF)),
-        ),
+        border: const Border(right: BorderSide(color: Color(0xFFDCE7DF))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Row(
-            children: [
-              const Text(
-                'OTHER PARTICIPANTS',
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${_participants.length}',
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          const Text(
+            'PARTICIPANTS (2)',
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 14),
-          // Participant grid
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 1.0,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: _participants.length,
-              itemBuilder: (context, index) {
-                final p = _participants[index];
-                return ParticipantCard(
-                  name: p.name,
-                  initials: p.initials,
-                  avatarColor: p.color,
-                  signalStrength: p.signal,
-                );
-              },
-            ),
+          const ParticipantCard(
+            name: 'You (Local)',
+            initials: 'ME',
+            avatarColor: AppColors.primary,
+            signalStrength: 3,
+          ),
+          const SizedBox(height: 10),
+          const ParticipantCard(
+            name: 'Remote Peer',
+            initials: 'RP',
+            avatarColor: Color(0xFF10A47D),
+            signalStrength: 3,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMobileParticipants() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.45),
-        border: const Border(
-          top: BorderSide(color: Color(0xFFDCE7DF)),
-        ),
-      ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _participants.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final p = _participants[index];
-          return SizedBox(
-            width: 80,
-            child: ParticipantCard(
-              name: p.name,
-              initials: p.initials,
-              avatarColor: p.color,
-              signalStrength: p.signal,
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMainCallArea() {
+  Widget _buildMainVideoArea() {
     return Stack(
       children: [
-        // Main content
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Audio/Video toggle
-              _buildModeToggle(),
-              const SizedBox(height: 40),
-              // Self avatar
-              Container(
-                width: 120,
-                height: 120,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.25),
-                      blurRadius: 30,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'ME',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              // Name
-              const Text(
-                'You',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              // Status
-              Text(
-                _isAudioMode
-                    ? 'Connected · Audio call'
-                    : 'Connected · Video call',
-                style: TextStyle(
-                  color: AppColors.textMuted.withOpacity(0.75),
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // "You" tag (bottom-left)
-        Positioned(
-          left: 18,
-          bottom: 14,
+        // Main Remote Video Stream View (Full area)
+        Positioned.fill(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.85),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'You',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            color: Colors.black,
+            child: _callService.remoteRenderer.srcObject != null
+                ? RTCVideoView(_callService.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Colors.white),
+                        SizedBox(height: 16),
+                        Text(
+                          'Waiting for peer video stream...',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
         ),
-        // Signal strength (bottom-right)
-        const Positioned(
-          right: 18,
-          bottom: 14,
-          child: SignalIndicator(
-            strength: 3,
-            showLabel: true,
-            barWidth: 3,
-            maxBarHeight: 14,
+
+        // Floating Local Video Camera Preview (Picture-in-Picture)
+        Positioned(
+          right: 20,
+          top: 20,
+          width: 140,
+          height: 190,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white38, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _callService.isVideoOff
+                ? const Center(
+                    child: Icon(Icons.videocam_off, color: Colors.white54, size: 36),
+                  )
+                : RTCVideoView(_callService.localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildModeToggle() {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFDCE7DF)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _toggleButton('Audio', _isAudioMode, () {
-            setState(() => _isAudioMode = true);
-          }),
-          _toggleButton('Video', !_isAudioMode, () {
-            setState(() => _isAudioMode = false);
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleButton(String label, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+  Widget _buildBottomControls() {
+    return CallControls(
+      userName: 'You',
+      userInitials: 'ME',
+      elapsed: '00:00',
+      participantCount: widget.participantCount,
+      controls: [
+        CallControlItem(
+          icon: _callService.isMicMuted ? Icons.mic_off : Icons.mic,
+          label: _callService.isMicMuted ? 'Unmute' : 'Mute',
+          isActive: _callService.isMicMuted,
+          onTap: () => _callService.toggleMic(),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : AppColors.textMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
+        CallControlItem(
+          icon: _callService.isVideoOff ? Icons.videocam_off : Icons.videocam,
+          label: _callService.isVideoOff ? 'Start Video' : 'Stop Video',
+          isActive: _callService.isVideoOff,
+          onTap: () => _callService.toggleCamera(),
         ),
-      ),
+        CallControlItem(
+          icon: Icons.cameraswitch,
+          label: 'Flip',
+          onTap: () => _callService.switchCamera(),
+        ),
+        CallControlItem(
+          icon: Icons.call_end,
+          label: 'End',
+          isDestructive: true,
+          onTap: () async {
+            await _callService.endCall();
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+      ],
     );
   }
 }
