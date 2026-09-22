@@ -6,7 +6,6 @@ import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
 import '../../../../core/services/contacts_service.dart';
 import '../controllers/contacts_controller.dart';
-import '../../../call/presentation/pages/call_page.dart';
 import '../../../call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
@@ -31,6 +30,7 @@ class _ContactsPageState extends State<ContactsPage> {
       context,
       recipientName: item.displayName,
       recipientMatricule: item.matricule,
+      recipientUserId: item.id,
     );
   }
 
