@@ -14,6 +14,7 @@ class WebRTCCallService extends ChangeNotifier {
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
+  bool _disposed = false;
   CallState _callState = CallState.idle;
   CallState get callState => _callState;
 
@@ -177,6 +178,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     // Reset state back to idle after delay
     Future.delayed(const Duration(seconds: 1), () {
+      if (_disposed) return;
       _callState = CallState.idle;
       notifyListeners();
     });
@@ -184,6 +186,7 @@ class WebRTCCallService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     localRenderer.dispose();
     remoteRenderer.dispose();
     _socket?.dispose();

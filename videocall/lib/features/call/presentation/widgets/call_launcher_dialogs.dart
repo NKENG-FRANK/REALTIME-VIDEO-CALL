@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
-import '../../../contacts/domain/models/contact.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
+import '../../../../core/services/signaling_service.dart';
 
 import '../pages/call_page.dart';
 
@@ -28,105 +29,149 @@ void showCallTypeSelectionDialog(
   BuildContext context, {
   required String recipientName,
   required String recipientMatricule,
+  required String recipientUserId,
 }) {
   showDialog(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.call, color: AppColors.primary, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Call $recipientName',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primary,
-                  ),
-                ),
-                if (recipientMatricule.isNotEmpty)
-                  Text(
-                    recipientMatricule,
-                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      content: const Text(
-        'Please choose the call mode you would like to initiate:',
-        style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
-      ),
-      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      actions: [
-        Row(
+    builder: (ctx) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.phone_rounded, size: 18),
-                label: const Text('Audio Call'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CallPage(
-                        callTitle: 'Audio Call - $recipientName',
-                        roomId: 'room-${recipientName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
-                        participantCount: 2,
-                      ),
-                    ),
-                  );
-                },
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
               ),
+              child: const Icon(Icons.call, color: AppColors.primary, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.videocam_rounded, size: 18),
-                label: const Text('Video Call'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CallPage(
-                        callTitle: 'Video Call - $recipientName',
-                        roomId: 'room-${recipientName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
-                        participantCount: 2,
-                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Call $recipientName',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.primary,
                     ),
-                  );
-                },
+                  ),
+                  if (recipientMatricule.isNotEmpty)
+                    Text(
+                      recipientMatricule,
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                ],
               ),
             ),
           ],
         ),
-      ],
+        content: const Text(
+          'Please choose the call mode you would like to initiate:',
+          style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.phone_rounded, size: 18),
+                  label: const Text('Audio Call'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _launchDirectCall(
+                      context,
+                      isVideo: false,
+                      recipientUserId: recipientUserId,
+                      recipientName: recipientName,
+                      recipientMatricule: recipientMatricule,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.videocam_rounded, size: 18),
+                  label: const Text('Video Call'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _launchDirectCall(
+                      context,
+                      isVideo: true,
+                      recipientUserId: recipientUserId,
+                      recipientName: recipientName,
+                      recipientMatricule: recipientMatricule,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+}
+
+/// Build a deterministic room ID from two user IDs so both parties always
+/// land in the same room regardless of who initiated.
+String _buildRoomId(String userIdA, String userIdB) {
+  final ids = [userIdA, userIdB]..sort();
+  return 'direct-${ids[0]}-${ids[1]}';
+}
+
+/// Shared helper: emit call:invite then navigate to CallPage.
+void _launchDirectCall(
+  BuildContext context, {
+  required bool isVideo,
+  required String recipientUserId,
+  required String recipientName,
+  required String recipientMatricule,
+}) {
+  final authCtrl = context.read<AuthController>();
+  final myUserId = authCtrl.currentUser?['id'] as String? ?? '';
+  final myName = authCtrl.currentUser?['fullName'] as String? ??
+      authCtrl.currentUser?['name'] as String? ?? 'Unknown';
+  final myMatricule = authCtrl.currentUser?['matricule'] as String? ?? '';
+
+  final roomId = _buildRoomId(myUserId, recipientUserId);
+
+  // Notify callee via the persistent signaling socket
+  context.read<SignalingService>().sendCallInvite(
+        calleeUserId: recipientUserId,
+        roomId: roomId,
+        isVideoCall: isVideo,
+        callerName: myName,
+        callerMatricule: myMatricule,
+      );
+
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => CallPage(
+        callTitle: isVideo
+            ? 'Video Call – $recipientName'
+            : 'Audio Call – $recipientName',
+        roomId: roomId,
+        participantCount: 2,
+      ),
     ),
   );
 }
@@ -172,8 +217,21 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
   }
 
   void _launchCall(bool isVideo) {
+    // For group calls, generate a unique room ID
+    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
+    final roomId = 'group-$randomCode';
     Navigator.pop(context);
-    Navigator.of(context).pushNamed('/connecting');
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CallPage(
+          callTitle: _titleController.text.trim().isNotEmpty
+              ? _titleController.text.trim()
+              : 'Group Call',
+          roomId: roomId,
+          participantCount: _selectedContactIds.length + 1,
+        ),
+      ),
+    );
   }
 
   @override
@@ -519,8 +577,28 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
   }
 
   void _launchCall(bool isVideo) {
+    if (_selectedContactId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a contact first.'),
+          backgroundColor: AppColors.primary,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    final contactsCtrl = context.read<ContactsController>();
+    final contact = contactsCtrl.contacts.firstWhere(
+      (c) => c.id == _selectedContactId,
+    );
     Navigator.pop(context);
-    Navigator.of(context).pushNamed(isVideo ? '/connecting' : '/call');
+    _launchDirectCall(
+      context,
+      isVideo: isVideo,
+      recipientUserId: contact.id,
+      recipientName: contact.name,
+      recipientMatricule: contact.matricule,
+    );
   }
 
   @override
@@ -700,7 +778,6 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                             separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFEEF5EF)),
                             itemBuilder: (context, idx) {
                               final contact = contacts[idx];
-                              final isSelected = _selectedContactId == contact.id;
                               return RadioListTile<String>(
                                 value: contact.id,
                                 groupValue: _selectedContactId,

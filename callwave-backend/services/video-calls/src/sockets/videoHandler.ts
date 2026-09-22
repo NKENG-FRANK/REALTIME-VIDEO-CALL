@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import { redis } from '@callwave/redis';
 import { publishCallEvent } from '../utils/rabbitmq.js';
 import {
   getOrCreateRoom,
@@ -11,6 +12,57 @@ import {
 
 export function registerVideoHandlers(io: Server, socket: Socket) {
   const userId = socket.data.userId;
+
+  // ─── Call Signaling ─────────────────────────────────────────────────────
+
+  /**
+   * Caller emits this BEFORE joining the room.
+   * The backend looks up the callee's live socket from Redis presence and
+   * forwards a `call:incoming` event so their app can show the incoming call UI.
+   */
+  socket.on(
+    'call:invite',
+    async (data: {
+      calleeUserId: string;
+      roomId: string;
+      callType: 'DIRECT_VIDEO' | 'DIRECT_AUDIO';
+      callerName: string;
+      callerMatricule: string;
+    }) => {
+      try {
+        const { calleeUserId, roomId, callType, callerName, callerMatricule } = data;
+        const calleeSocketId = await redis.hget('video:presence', calleeUserId);
+
+        if (!calleeSocketId) {
+          socket.emit('call:callee_offline', { calleeUserId });
+          return;
+        }
+
+        io.to(calleeSocketId).emit('call:incoming', {
+          roomId,
+          callType,
+          callerUserId: userId,
+          callerName,
+          callerMatricule,
+        });
+
+        // Acknowledge to the caller that the invite was delivered
+        socket.emit('call:invite_sent', { calleeUserId, roomId });
+      } catch (error: any) {
+        socket.emit('error', { message: error.message });
+      }
+    }
+  );
+
+  /**
+   * Callee declines — notify the caller that the call was rejected.
+   */
+  socket.on('call:decline', async (data: { callerUserId: string; roomId: string }) => {
+    const callerSocketId = await redis.hget('video:presence', data.callerUserId);
+    if (callerSocketId) {
+      io.to(callerSocketId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
+    }
+  });
 
   // ─── Room Lifecycle ──────────────────────────────────────────────────────
 

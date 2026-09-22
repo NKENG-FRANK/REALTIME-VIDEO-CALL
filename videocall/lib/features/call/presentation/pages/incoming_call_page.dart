@@ -10,14 +10,20 @@ class IncomingCallPage extends StatefulWidget {
   final String callerInitials;
   final Color callerColor;
   final bool isVideoCall;
+  final String roomId;
+  final VoidCallback? onAccept;
+  final VoidCallback? onDecline;
 
   const IncomingCallPage({
     Key? key,
-    this.callerName = 'Sarah Chen',
-    this.callerMatricule = 'S00847102',
-    this.callerInitials = 'SC',
+    required this.callerName,
+    required this.callerMatricule,
+    required this.roomId,
+    this.callerInitials = '',
     this.callerColor = const Color(0xFF8752F4),
     this.isVideoCall = true,
+    this.onAccept,
+    this.onDecline,
   }) : super(key: key);
 
   @override
@@ -166,7 +172,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   ],
                 ),
                 child: Text(
-                  widget.callerInitials,
+                  widget.callerInitials.isNotEmpty
+                      ? widget.callerInitials
+                      : _IncomingCallPageState._buildInitials(widget.callerName),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -248,6 +256,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
           color: AppColors.callDecline,
           rotateIcon: true,
           onTap: () {
+            if (widget.onDecline != null) {
+              widget.onDecline!();
+            }
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             } else {
@@ -262,11 +273,24 @@ class _IncomingCallPageState extends State<IncomingCallPage>
           label: 'Accept',
           color: AppColors.callAccept,
           onTap: () {
-            Navigator.of(context).pushReplacementNamed('/call');
+            if (widget.onAccept != null) {
+              widget.onAccept!();
+            } else {
+              // Fallback: navigate to CallPage with the provided roomId
+              Navigator.of(context).pushReplacementNamed('/call');
+            }
           },
         ),
       ],
     );
+  }
+
+  /// Derive two-letter initials from a full name.
+  static String _buildInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty) return '??';
+    if (parts.length == 1) return parts[0].substring(0, math.min(2, parts[0].length)).toUpperCase();
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
   }
 }
 

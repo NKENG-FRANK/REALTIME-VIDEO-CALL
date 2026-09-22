@@ -11,6 +11,8 @@ class CallLog {
   final bool isOutgoing;
   final bool isGroup;
   final int? participants;
+  /// The remote user's ID — used to redial from call history.
+  final String? contactUserId;
 
   const CallLog({
     required this.id,
@@ -23,6 +25,7 @@ class CallLog {
     this.isOutgoing = false,
     this.isGroup = false,
     this.participants,
+    this.contactUserId,
   });
 
   Color get color => Color(colorValue);
@@ -38,6 +41,7 @@ class CallLog {
         'isOutgoing': isOutgoing,
         'isGroup': isGroup,
         'participants': participants,
+        'contactUserId': contactUserId,
       };
 
   factory CallLog.fromJson(Map<String, dynamic> json) => CallLog(
@@ -51,5 +55,6 @@ class CallLog {
         isOutgoing: json['isOutgoing'] as bool? ?? false,
         isGroup: json['isGroup'] as bool? ?? false,
         participants: json['participants'] as int?,
+        contactUserId: json['contactUserId'] as String?,
       );
 }

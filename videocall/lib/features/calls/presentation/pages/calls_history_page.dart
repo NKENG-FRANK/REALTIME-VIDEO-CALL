@@ -499,6 +499,7 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
             context,
             recipientName: call.name,
             recipientMatricule: '',
+            recipientUserId: call.contactUserId ?? '',
           );
         }
       },
