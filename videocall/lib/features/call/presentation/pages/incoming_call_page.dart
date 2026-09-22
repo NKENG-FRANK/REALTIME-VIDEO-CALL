@@ -247,15 +247,23 @@ class _IncomingCallPageState extends State<IncomingCallPage>
           label: 'Decline',
           color: AppColors.callDecline,
           rotateIcon: true,
-          onTap: () {},
+          onTap: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              Navigator.of(context).pushReplacementNamed('/calls');
+            }
+          },
         ),
         const SizedBox(width: 50),
         // Accept button
         _CallActionButton(
-          icon: Icons.videocam,
+          icon: widget.isVideoCall ? Icons.videocam : Icons.phone,
           label: 'Accept',
           color: AppColors.callAccept,
-          onTap: () {},
+          onTap: () {
+            Navigator.of(context).pushReplacementNamed('/call');
+          },
         ),
       ],
     );

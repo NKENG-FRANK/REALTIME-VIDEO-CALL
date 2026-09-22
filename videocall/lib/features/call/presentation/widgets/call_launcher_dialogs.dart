@@ -5,6 +5,8 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../contacts/domain/models/contact.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
 
+import '../pages/call_page.dart';
+
 /// Shows the Launch Group Call modal screen.
 void showGroupCallLaunchDialog(BuildContext context) {
   showDialog(
@@ -18,6 +20,114 @@ void showOneToOneCallLaunchDialog(BuildContext context) {
   showDialog(
     context: context,
     builder: (ctx) => const _OneToOneCallLaunchDialog(),
+  );
+}
+
+/// Shows a dialog prompting the user to select Audio Call or Video Call for a contact.
+void showCallTypeSelectionDialog(
+  BuildContext context, {
+  required String recipientName,
+  required String recipientMatricule,
+}) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.call, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Call $recipientName',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                  ),
+                ),
+                if (recipientMatricule.isNotEmpty)
+                  Text(
+                    recipientMatricule,
+                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: const Text(
+        'Please choose the call mode you would like to initiate:',
+        style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.phone_rounded, size: 18),
+                label: const Text('Audio Call'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CallPage(
+                        callTitle: 'Audio Call - $recipientName',
+                        roomId: 'room-${recipientName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
+                        participantCount: 2,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.videocam_rounded, size: 18),
+                label: const Text('Video Call'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CallPage(
+                        callTitle: 'Video Call - $recipientName',
+                        roomId: 'room-${recipientName.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
+                        participantCount: 2,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 }
 

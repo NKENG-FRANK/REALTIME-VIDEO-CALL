@@ -71,7 +71,15 @@ class _ConnectingPageState extends State<ConnectingPage>
             const SizedBox(height: 28),
             // Cancel button
             TextButton(
-              onPressed: widget.onCancel ?? () {},
+              onPressed: () {
+                if (widget.onCancel != null) {
+                  widget.onCancel!();
+                } else if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                } else {
+                  Navigator.of(context).pushReplacementNamed('/calls');
+                }
+              },
               child: const Text(
                 'Cancel',
                 style: TextStyle(

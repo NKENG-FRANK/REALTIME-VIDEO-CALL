@@ -7,6 +7,7 @@ import '../../../../core/widgets/hover_widgets.dart';
 import '../../../../core/services/contacts_service.dart';
 import '../controllers/contacts_controller.dart';
 import '../../../call/presentation/pages/call_page.dart';
+import '../../../call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class ContactsPage extends StatefulWidget {
@@ -26,13 +27,10 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   void _launchCall(BuildContext context, ContactItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CallPage(
-          callTitle: item.displayName,
-          roomId: 'room-${item.id.isNotEmpty ? item.id : item.matricule}',
-        ),
-      ),
+    showCallTypeSelectionDialog(
+      context,
+      recipientName: item.displayName,
+      recipientMatricule: item.matricule,
     );
   }
 

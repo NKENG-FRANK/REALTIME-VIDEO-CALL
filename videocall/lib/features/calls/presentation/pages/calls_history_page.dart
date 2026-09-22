@@ -491,7 +491,17 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
 
   Widget _callRow(CallLog call, CallsController controller) {
     return SmoothHoverCard(
-      onTap: () => Navigator.of(context).pushNamed('/call'),
+      onTap: () {
+        if (call.isGroup) {
+          showGroupCallLaunchDialog(context);
+        } else {
+          showCallTypeSelectionDialog(
+            context,
+            recipientName: call.name,
+            recipientMatricule: '',
+          );
+        }
+      },
       normalColor: call.isMissed
           ? const Color(0xFFFDE8E8).withValues(alpha: 0.45)
           : Colors.transparent,
