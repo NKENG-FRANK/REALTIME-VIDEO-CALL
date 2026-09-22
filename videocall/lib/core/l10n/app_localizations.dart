@@ -363,4 +363,15 @@ class AppLocalizations {
       isFrench
           ? 'Réduire les animations d\'interface.'
           : 'Reduce background and interface animations.';
+
+  // Account / Logout
+  String get logout => isFrench ? 'Déconnexion' : 'Log Out';
+  String get logoutSubtitle =>
+      isFrench ? 'Déconnecter votre session Callwave.' : 'Sign out of your Callwave session.';
+  String get logoutConfirmTitle =>
+      isFrench ? 'Confirmer la déconnexion' : 'Confirm Logout';
+  String get logoutConfirmMessage =>
+      isFrench
+          ? 'Voulez-vous vraiment vous déconnecter de votre compte ?'
+          : 'Are you sure you want to log out of your account?';
 }

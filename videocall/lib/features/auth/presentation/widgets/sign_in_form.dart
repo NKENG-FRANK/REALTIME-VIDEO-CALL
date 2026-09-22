@@ -7,6 +7,7 @@ class SignInForm extends StatelessWidget {
   final String password;
   final bool showPassword;
   final bool rememberMe;
+  final String? errorMessage;
   final ValueChanged<String> onMatriculeChanged;
   final ValueChanged<String> onPasswordChanged;
   final VoidCallback onTogglePassword;
@@ -21,6 +22,7 @@ class SignInForm extends StatelessWidget {
     required this.password,
     required this.showPassword,
     required this.rememberMe,
+    this.errorMessage,
     required this.onMatriculeChanged,
     required this.onPasswordChanged,
     required this.onTogglePassword,
@@ -44,7 +46,36 @@ class SignInForm extends StatelessWidget {
               height: 1.1,
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 16),
+
+          // On-screen Error Feedback Banner
+          if (errorMessage != null && errorMessage!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDE8E8),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF8B4B4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Color(0xFFE31845), size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      errorMessage!,
+                      style: const TextStyle(
+                        color: Color(0xFF9B1C1C),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Matricule field
           TextField(
@@ -55,7 +86,7 @@ class SignInForm extends StatelessWidget {
               prefixIconConstraints: const BoxConstraints(
                 minWidth: 38,
               ),
-              hintText: AppLocalizations.of(context).matriculePlaceholder,
+              hintText: 'Matricule (e.g. A1234567 or 1234567A)',
             ),
           ),
           const SizedBox(height: 11),
@@ -74,10 +105,11 @@ class SignInForm extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(right: 11),
                   child: Text(
-                    showPassword ? '◌' : '◉',
+                    showPassword ? 'Hide' : 'Show',
                     style: const TextStyle(
                       color: Color(0xFF9AA29D),
-                      fontSize: 12,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

@@ -33,43 +33,53 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ContactsController()),
         ChangeNotifierProvider(create: (_) => SettingsController()),
       ],
-      // Consumer listens to SettingsController so locale updates immediately
-      // when the user changes the language in Settings.
-      child: Consumer<SettingsController>(
-        builder: (context, settingsCtrl, _) {
-          final languageSetting = settingsCtrl.settings.language; // 'French' | 'English'
-          final locale = languageSetting == 'English'
-              ? const Locale('en')
-              : const Locale('fr');
+      child: Builder(
+        builder: (context) {
+          // Wire AuthController → SettingsController so profile data from the
+          // backend is seeded into settings after every login / app restart.
+          final authCtrl = context.read<AuthController>();
+          final settingsCtrl = context.read<SettingsController>();
+          authCtrl.onUserLoaded = (user) => settingsCtrl.seedFromUser(user);
 
-          return MaterialApp(
-            title: 'Callwave',
-            theme: AppTheme.lightTheme(),
+          // Consumer listens to SettingsController so locale updates immediately
+          // when the user changes the language in Settings.
+          return Consumer<SettingsController>(
+            builder: (context, settingsCtrl, _) {
+              final languageSetting = settingsCtrl.settings.language;
+              final locale = languageSetting == 'English'
+                  ? const Locale('en')
+                  : const Locale('fr');
 
-            // ── Localization ─────────────────────────────────────────────────
-            locale: locale,
-            supportedLocales: const [
-              Locale('fr'), // French (default)
-              Locale('en'), // English
-            ],
-            localizationsDelegates: const [
-              AppLocalizationsDelegate(),
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+              return MaterialApp(
+                title: 'Callwave',
+                theme: AppTheme.lightTheme(),
 
-            home: const AuthPage(),
-            debugShowCheckedModeBanner: false,
-            routes: {
-              '/auth': (context) => const AuthPage(),
-              '/calls': (context) => const CallsHistoryPage(),
-              '/contacts': (context) => const ContactsPage(),
-              '/settings': (context) => const SettingsPage(),
-              '/incoming-call': (context) => const IncomingCallPage(),
-              '/connecting': (context) => const ConnectingPage(),
-              '/call': (context) => const CallPage(),
-              '/call-ended': (context) => const CallEndedPage(),
+                // ── Localization ─────────────────────────────────────────────
+                locale: locale,
+                supportedLocales: const [
+                  Locale('fr'), // French (default)
+                  Locale('en'), // English
+                ],
+                localizationsDelegates: const [
+                  AppLocalizationsDelegate(),
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+
+                home: const AuthPage(),
+                debugShowCheckedModeBanner: false,
+                routes: {
+                  '/auth': (context) => const AuthPage(),
+                  '/calls': (context) => const CallsHistoryPage(),
+                  '/contacts': (context) => const ContactsPage(),
+                  '/settings': (context) => const SettingsPage(),
+                  '/incoming-call': (context) => const IncomingCallPage(),
+                  '/connecting': (context) => const ConnectingPage(),
+                  '/call': (context) => const CallPage(),
+                  '/call-ended': (context) => const CallEndedPage(),
+                },
+              );
             },
           );
         },

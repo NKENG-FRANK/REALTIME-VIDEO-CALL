@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import '../../../../config/api_config.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/local_storage_service.dart';
 import '../../domain/models/user_settings.dart';
 
@@ -43,6 +46,30 @@ class SettingsController extends ChangeNotifier {
     await _saveToStorage();
   }
 
+  /// Called after login to pre-fill profile fields from DB data.
+  /// Always overwrites local settings with the latest DB values.
+  Future<void> seedFromUser(Map<String, dynamic> user) async {
+    final displayName = (user['display_name'] as String?)?.trim() ?? '';
+    final matricule   = (user['matricule']     as String?)?.trim() ?? '';
+    final department  = (user['department']    as String?)?.trim() ?? '';
+    final ministry    = (user['ministry']      as String?)?.trim() ?? '';
+    final division    = (user['division']      as String?)?.trim() ?? '';
+    final position    = (user['position_title'] as String?)?.trim() ?? '';
+    final office      = (user['office_location'] as String?)?.trim() ?? '';
+
+    _settings = _settings.copyWith(
+      displayName:    displayName,
+      matricule:      matricule,
+      department:     department,
+      ministry:       ministry,
+      division:       division,
+      positionTitle:  position,
+      officeLocation: office,
+    );
+    notifyListeners();
+    await _saveToStorage();
+  }
+
   Future<void> updateProfile({
     String? displayName,
     String? status,
@@ -67,6 +94,45 @@ class SettingsController extends ChangeNotifier {
     );
     notifyListeners();
     await _saveToStorage();
+  }
+
+  /// Persists current user profile settings to the backend database via PATCH /api/v1/users/profile
+  Future<bool> saveProfileToBackend() async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null || token.isEmpty) {
+        debugPrint('Cannot save profile: No auth token found.');
+        return false;
+      }
+
+      final response = await http.patch(
+        Uri.parse(ApiConfig.profileUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'display_name': _settings.displayName,
+          'ministry': _settings.ministry,
+          'department': _settings.department,
+          'division': _settings.division,
+          'position_title': _settings.positionTitle,
+          'office_location': _settings.officeLocation,
+          'hide_phone_email': _settings.hidePhoneEmail,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('Profile updated on backend successfully');
+        return true;
+      } else {
+        debugPrint('Failed to update profile: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error saving profile to backend: $e');
+      return false;
+    }
   }
 
   Future<void> updateCalling({

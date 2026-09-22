@@ -1,0 +1,186 @@
+services:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: callwave-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: callwave
+      POSTGRES_USER: callwave
+      POSTGRES_PASSWORD: callwave_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callwave -d callwave"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: callwave-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: callwave-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: callwave
+      RABBITMQ_DEFAULT_PASS: callwave_secret
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Microservices
+  # ─────────────────────────────────────────────────────────────────────────
+
+  user-management:
+    build:
+      context: .
+      dockerfile: services/user-management/Dockerfile
+    container_name: callwave-user-management
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: callwave
+      DB_USER: callwave
+      DB_PASSWORD: callwave_secret
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_prod}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  audio-calls:
+    build:
+      context: .
+      dockerfile: services/audio-calls/Dockerfile
+    container_name: callwave-audio-calls
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000  # base port; service listens on PORT+1 = 3001
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  video-calls:
+    build:
+      context: .
+      dockerfile: services/video-calls/Dockerfile
+    container_name: callwave-video-calls
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+      # Mediasoup UDP media ports (match RTC port range in workerPool.ts)
+      - "40000-40099:40000-40099/udp"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000  # base port; service listens on PORT+2 = 3002
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+      # IMPORTANT: Set to your host/public IP so Mediasoup ICE candidates are reachable
+      ANNOUNCED_IP: ${ANNOUNCED_IP:-127.0.0.1}
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    # Mediasoup requires host network mode for proper UDP, or use the port mapping above
+    # Uncomment below for production on Linux hosts:
+    # network_mode: host
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  background-processes:
+    build:
+      context: .
+      dockerfile: services/background-processes/Dockerfile
+    container_name: callwave-background-processes
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: callwave
+      DB_USER: callwave
+      DB_PASSWORD: callwave_secret
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Volumes
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:

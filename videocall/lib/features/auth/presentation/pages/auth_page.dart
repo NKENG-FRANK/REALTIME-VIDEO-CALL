@@ -114,6 +114,7 @@ class AuthPage extends StatelessWidget {
                             matricule: authController.matricule,
                             password: authController.password,
                             showPassword: authController.showPassword,
+                            errorMessage: authController.errorMessage,
                             onFullNameChanged:
                                 authController.updateFullName,
                             onMatriculeChanged: authController.updateMatricule,
@@ -135,6 +136,7 @@ class AuthPage extends StatelessWidget {
                             password: authController.password,
                             showPassword: authController.showPassword,
                             rememberMe: authController.rememberMe,
+                            errorMessage: authController.errorMessage,
                             onMatriculeChanged: authController.updateMatricule,
                             onPasswordChanged:
                                 authController.updatePassword,
@@ -233,6 +235,7 @@ class AuthPage extends StatelessWidget {
                         matricule: authController.matricule,
                         password: authController.password,
                         showPassword: authController.showPassword,
+                        errorMessage: authController.errorMessage,
                         onFullNameChanged: authController.updateFullName,
                         onMatriculeChanged: authController.updateMatricule,
                         onPasswordChanged: authController.updatePassword,
@@ -253,6 +256,7 @@ class AuthPage extends StatelessWidget {
                         password: authController.password,
                         showPassword: authController.showPassword,
                         rememberMe: authController.rememberMe,
+                        errorMessage: authController.errorMessage,
                         onMatriculeChanged: authController.updateMatricule,
                         onPasswordChanged: authController.updatePassword,
                         onTogglePassword:

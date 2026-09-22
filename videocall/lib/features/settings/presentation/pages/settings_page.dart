@@ -7,6 +7,7 @@ import '../../../../core/widgets/hover_widgets.dart';
 import '../../../contacts/domain/models/contact.dart';
 import '../../domain/models/user_settings.dart';
 import '../controllers/settings_controller.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 
 /// A single setting item definition.
 class _SettingToggle {
@@ -120,10 +121,27 @@ class SettingsPage extends StatelessWidget {
           const Divider(height: 1, color: Color(0xFFD7E5DB)),
           Padding(
             padding: const EdgeInsets.all(13),
-            child: Consumer<SettingsController>(
-              builder: (context, settingsCtrl, _) {
-                final displayName = settingsCtrl.settings.displayName;
-                final initials = _getInitials(displayName);
+            child: Consumer<AuthController>(
+              builder: (context, authController, _) {
+                final user = authController.currentUser;
+                final displayName = user != null 
+                    ? (user['display_name'] ?? user['displayName'] ?? user['username'] ?? user['matricule'] ?? 'User') 
+                    : 'User';
+                
+                final String initials;
+                if (user != null) {
+                  final parts = displayName.trim().split(' ');
+                  if (parts.isEmpty || parts.first.isEmpty) {
+                    initials = 'U';
+                  } else if (parts.length == 1) {
+                    initials = parts.first[0].toUpperCase();
+                  } else {
+                    initials = (parts.first[0] + parts.last[0]).toUpperCase();
+                  }
+                } else {
+                  initials = 'ME';
+                }
+
                 return Row(
                   children: [
                     _avatar(initials, AppColors.primary),
@@ -131,6 +149,7 @@ class SettingsPage extends StatelessWidget {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             displayName,
@@ -142,9 +161,26 @@ class SettingsPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 3),
-                          const _OnlineLabel(),
+                          if (user != null && user['matricule'] != null)
+                            Text(
+                              user['matricule'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                          else
+                            const _OnlineLabel(),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
+                      tooltip: AppLocalizations.of(context).logout,
+                      onPressed: () => _confirmAndLogout(context, authController),
                     ),
                   ],
                 );
@@ -247,14 +283,39 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(AppLocalizations.of(context).savedSuccessfully),
-                  duration: const Duration(seconds: 2),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
+            onPressed: () async {
+              final controller = Provider.of<SettingsController>(context, listen: false);
+              final authCtrl = Provider.of<AuthController>(context, listen: false);
+              final success = await controller.saveProfileToBackend();
+              if (context.mounted) {
+                if (success) {
+                  if (authCtrl.currentUser != null) {
+                    final updatedUser = Map<String, dynamic>.from(authCtrl.currentUser!);
+                    updatedUser['display_name'] = controller.settings.displayName;
+                    updatedUser['ministry'] = controller.settings.ministry;
+                    updatedUser['department'] = controller.settings.department;
+                    updatedUser['division'] = controller.settings.division;
+                    updatedUser['position_title'] = controller.settings.positionTitle;
+                    updatedUser['office_location'] = controller.settings.officeLocation;
+                    authCtrl.updateUserData(updatedUser);
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppLocalizations.of(context).savedSuccessfully),
+                      duration: const Duration(seconds: 2),
+                      backgroundColor: AppColors.primary,
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to save changes to server'),
+                      duration: Duration(seconds: 3),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
@@ -275,12 +336,13 @@ class SettingsPage extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    return Consumer<SettingsController>(
-      builder: (context, controller, _) {
+    return Consumer2<SettingsController, AuthController>(
+      builder: (context, controller, authCtrl, _) {
         if (controller.isLoading) {
           return const Center(child: CircularProgressIndicator(color: AppColors.primary));
         }
         final s = controller.settings;
+        final dbUser = authCtrl.currentUser;
         return Column(
           children: [
             _buildPageHeader(context),
@@ -295,7 +357,7 @@ class SettingsPage extends StatelessWidget {
                       title: AppLocalizations.of(context).profileSection,
                       subtitle: AppLocalizations.of(context).profileSubtitle,
                       children: [
-                        _buildProfileRow(s, context),
+                        _buildProfileRow(s, context, dbUser),
                         const _SectionDivider(),
                         _EditableTextSetting(
                           title: AppLocalizations.of(context).displayName,
@@ -510,6 +572,57 @@ class SettingsPage extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 20),
+
+                    // Account / Session section
+                    _buildSectionCard(
+                      title: AppLocalizations.of(context).isFrench ? 'Compte et Session' : 'Account & Session',
+                      subtitle: AppLocalizations.of(context).logoutSubtitle,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      AppLocalizations.of(context).logout,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      AppLocalizations.of(context).logoutSubtitle,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textMuted.withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.logout, size: 16),
+                                label: Text(AppLocalizations.of(context).logout),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.redAccent,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () => _confirmAndLogout(context, authCtrl),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -518,6 +631,36 @@ class SettingsPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmAndLogout(BuildContext context, AuthController authCtrl) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.logoutConfirmTitle),
+        content: Text(l10n.logoutConfirmMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.logout),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      authCtrl.signOut();
+      Navigator.of(context).pushNamedAndRemoveUntil('/auth', (route) => false);
+    }
   }
 
   // ── Section card wrapper ──
@@ -571,7 +714,18 @@ class SettingsPage extends StatelessWidget {
 
   // ── Individual setting builders ──
 
-  Widget _buildProfileRow(UserSettings settings, BuildContext context) {
+  Widget _buildProfileRow(UserSettings settings, BuildContext context, Map<String, dynamic>? dbUser) {
+    // Prefer DB data for display, fall back to locally-stored settings
+    final displayName = (dbUser?['display_name'] as String?)?.trim().isNotEmpty == true
+        ? (dbUser!['display_name'] as String)
+        : settings.displayName;
+    final matricule = (dbUser?['matricule'] as String?)?.trim().isNotEmpty == true
+        ? (dbUser!['matricule'] as String)
+        : settings.matricule;
+    final status = settings.status;
+
+    final initials = _getInitials(displayName);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
       child: Row(
@@ -586,7 +740,7 @@ class SettingsPage extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Text(
-              _getInitials(settings.displayName),
+              initials,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -601,21 +755,23 @@ class SettingsPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  settings.displayName,
+                  displayName,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '${settings.displayName.toLowerCase().replaceAll(' ', '.')}@callwave.app',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted.withValues(alpha: 0.8),
+                if (matricule.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    matricule,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted.withValues(alpha: 0.8),
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 5),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -628,7 +784,7 @@ class SettingsPage extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    settings.status,
+                    status,
                     style: const TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
