@@ -137,7 +137,7 @@ services:
       RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
       # IMPORTANT: Set to your host/public IP so Mediasoup ICE candidates are reachable
-      ANNOUNCED_IP: ${ANNOUNCED_IP:-127.0.0.1}
+      ANNOUNCED_IP: ${ANNOUNCED_IP:-192.168.50.123}
     depends_on:
       redis:
         condition: service_healthy

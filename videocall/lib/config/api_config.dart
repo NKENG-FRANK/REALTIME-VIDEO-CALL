@@ -1,9 +1,11 @@
 class ApiConfig {
+  // Network IP address of the machine running the backend Docker containers
+  static const String serverHost = String.fromEnvironment('SERVER_IP', defaultValue: '192.168.50.123');
+
   // Base URLs for microservices
-  // Default points to localhost for local testing (can be updated for device/emulator IP)
-  static const String userManagementBaseUrl = 'http://localhost:3000/api/v1';
-  static const String audioCallsBaseUrl = 'ws://localhost:3001';
-  static const String videoCallsBaseUrl = 'ws://localhost:3002';
+  static String get userManagementBaseUrl => 'http://$serverHost:3000/api/v1';
+  static String get audioCallsBaseUrl => 'ws://$serverHost:3001';
+  static String get videoCallsBaseUrl => 'ws://$serverHost:3002';
 
   // Specific Endpoint Routes
   static String get loginUrl => '$userManagementBaseUrl/auth/login';
