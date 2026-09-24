@@ -281,6 +281,29 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   socket.on('call:end', async (data: { roomId: string; durationSeconds: number }) => {
     await leaveRoom(socket, io, userId, data.roomId, data.durationSeconds, 'COMPLETED');
   });
+
+  // ─── WebRTC Direct Peer-to-Peer Signaling ───────────────────────────────────
+
+  socket.on('webrtc:offer', async (data: { roomId: string; sdp: any }) => {
+    socket.to(data.roomId).emit('webrtc:offer', {
+      senderUserId: userId,
+      sdp: data.sdp,
+    });
+  });
+
+  socket.on('webrtc:answer', async (data: { roomId: string; sdp: any }) => {
+    socket.to(data.roomId).emit('webrtc:answer', {
+      senderUserId: userId,
+      sdp: data.sdp,
+    });
+  });
+
+  socket.on('webrtc:candidate', async (data: { roomId: string; candidate: any }) => {
+    socket.to(data.roomId).emit('webrtc:candidate', {
+      senderUserId: userId,
+      candidate: data.candidate,
+    });
+  });
 }
 
 // ─── Shared Leave Helper ──────────────────────────────────────────────────────
@@ -296,8 +319,9 @@ async function leaveRoom(
   removeParticipant(roomId, userId);
   socket.leave(roomId);
 
-  // Notify remaining participants
+  // Notify remaining participants in the room
   io.to(roomId).emit('room:participant_left', { userId });
+  io.to(roomId).emit('call:ended', { roomId, endedBy: userId });
 
   // Publish to RabbitMQ for background processing
   await publishCallEvent('call.completed', {

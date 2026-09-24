@@ -10,6 +10,7 @@ class WebRTCCallService extends ChangeNotifier {
   IO.Socket? _socket;
   MediaStream? _localStream;
   MediaStream? _remoteStream;
+  RTCPeerConnection? _peerConnection;
   
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
@@ -25,6 +26,13 @@ class WebRTCCallService extends ChangeNotifier {
   bool get isVideoOff => _isVideoOff;
 
   String? _currentRoomId;
+
+  static const Map<String, dynamic> _iceServers = {
+    'iceServers': [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+    ],
+  };
 
   WebRTCCallService() {
     _initRenderers();
@@ -56,14 +64,57 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Disconnected from Video Calls Socket.io server');
     });
 
-    _socket!.on('room:joined', (data) {
+    _socket!.on('room:joined', (data) async {
       debugPrint('[WebRTC] Joined room: $data');
       _callState = CallState.connected;
       notifyListeners();
+
+      final map = data as Map<String, dynamic>?;
+      final existingParticipants = map?['participants'] as List?;
+      if (existingParticipants != null && existingParticipants.isNotEmpty) {
+        // We are joining a room with an existing peer, trigger offer
+        await _createOffer();
+      }
     });
 
-    _socket!.on('room:participant_joined', (data) {
+    _socket!.on('room:participant_joined', (data) async {
       debugPrint('[WebRTC] Participant joined: $data');
+      // Create peer connection & offer when new peer arrives
+      await _createOffer();
+    });
+
+    _socket!.on('webrtc:offer', (data) async {
+      debugPrint('[WebRTC] Received WebRTC offer');
+      final map = data as Map<String, dynamic>;
+      final sdpMap = map['sdp'] as Map<String, dynamic>;
+      await _handleOffer(sdpMap);
+    });
+
+    _socket!.on('webrtc:answer', (data) async {
+      debugPrint('[WebRTC] Received WebRTC answer');
+      final map = data as Map<String, dynamic>;
+      final sdpMap = map['sdp'] as Map<String, dynamic>;
+      final description = RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
+      await _peerConnection?.setRemoteDescription(description);
+    });
+
+    _socket!.on('webrtc:candidate', (data) async {
+      debugPrint('[WebRTC] Received ICE candidate');
+      final map = data as Map<String, dynamic>;
+      final candidateMap = map['candidate'] as Map<String, dynamic>?;
+      if (candidateMap != null && _peerConnection != null) {
+        final candidate = RTCIceCandidate(
+          candidateMap['candidate'],
+          candidateMap['sdpMid'],
+          candidateMap['sdpMLineIndex'],
+        );
+        await _peerConnection?.addCandidate(candidate);
+      }
+    });
+
+    _socket!.on('call:ended', (data) {
+      debugPrint('[WebRTC] Call ended by server/peer: $data');
+      endCall();
     });
 
     _socket!.on('room:participant_left', (data) {
@@ -118,6 +169,82 @@ class WebRTCCallService extends ChangeNotifier {
     });
   }
 
+  /// Setup RTCPeerConnection and local/remote track handlers
+  Future<void> _createPeerConnection() async {
+    if (_peerConnection != null) return;
+
+    _peerConnection = await createPeerConnection(_iceServers);
+
+    if (_localStream != null) {
+      for (final track in _localStream!.getTracks()) {
+        await _peerConnection!.addTrack(track, _localStream!);
+      }
+    }
+
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
+      if (event.streams.isNotEmpty) {
+        _remoteStream = event.streams[0];
+        remoteRenderer.srcObject = _remoteStream;
+        notifyListeners();
+      }
+    };
+
+    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      if (_currentRoomId != null && candidate.candidate != null) {
+        _socket?.emit('webrtc:candidate', {
+          'roomId': _currentRoomId,
+          'candidate': candidate.toMap(),
+        });
+      }
+    };
+
+    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+      debugPrint('[WebRTC] ICE Connection State: $state');
+    };
+  }
+
+  /// Create and send WebRTC SDP Offer
+  Future<void> _createOffer() async {
+    try {
+      await _createPeerConnection();
+      final offer = await _peerConnection!.createOffer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': true,
+      });
+      await _peerConnection!.setLocalDescription(offer);
+
+      _socket?.emit('webrtc:offer', {
+        'roomId': _currentRoomId,
+        'sdp': offer.toMap(),
+      });
+    } catch (e) {
+      debugPrint('[WebRTC] Error creating offer: $e');
+    }
+  }
+
+  /// Handle incoming WebRTC SDP Offer and respond with SDP Answer
+  Future<void> _handleOffer(Map<String, dynamic> sdpMap) async {
+    try {
+      await _createPeerConnection();
+      final description = RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
+      await _peerConnection!.setRemoteDescription(description);
+
+      final answer = await _peerConnection!.createAnswer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': true,
+      });
+      await _peerConnection!.setLocalDescription(answer);
+
+      _socket?.emit('webrtc:answer', {
+        'roomId': _currentRoomId,
+        'sdp': answer.toMap(),
+      });
+    } catch (e) {
+      debugPrint('[WebRTC] Error handling offer: $e');
+    }
+  }
+
   /// Toggle Microphone Mute
   void toggleMic() {
     if (_localStream != null) {
@@ -154,6 +281,8 @@ class WebRTCCallService extends ChangeNotifier {
 
   /// End Call and Release Resources
   Future<void> endCall() async {
+    if (_callState == CallState.ended) return;
+
     if (_currentRoomId != null) {
       _socket?.emit('call:end', {
         'roomId': _currentRoomId,
@@ -162,6 +291,14 @@ class WebRTCCallService extends ChangeNotifier {
     }
 
     _callState = CallState.ended;
+
+    try {
+      await _peerConnection?.close();
+      await _peerConnection?.dispose();
+    } catch (e) {
+      debugPrint('[WebRTC] Error closing peer connection: $e');
+    }
+    _peerConnection = null;
 
     _localStream?.getTracks().forEach((track) => track.stop());
     await _localStream?.dispose();
@@ -187,6 +324,8 @@ class WebRTCCallService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _peerConnection?.close();
+    _peerConnection?.dispose();
     localRenderer.dispose();
     remoteRenderer.dispose();
     _socket?.dispose();
