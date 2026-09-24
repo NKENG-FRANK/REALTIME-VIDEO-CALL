@@ -5,6 +5,7 @@ import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
 import 'core/services/signaling_service.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
+import 'features/calls/domain/models/call_log.dart';
 import 'features/calls/presentation/controllers/calls_controller.dart';
 import 'features/contacts/presentation/controllers/contacts_controller.dart';
 import 'features/settings/presentation/controllers/settings_controller.dart';
@@ -139,6 +140,22 @@ class _GlobalIncomingCallListenerState extends State<_GlobalIncomingCallListener
               roomId: incoming.roomId,
               isVideoCall: incoming.isVideoCall,
               onAccept: () {
+                // Log incoming accepted call
+                final parts = incoming.callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+                final initials = parts.isEmpty ? 'U' : (parts.length == 1 ? parts[0][0].toUpperCase() : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+                final log = CallLog(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: incoming.callerName,
+                  initials: initials,
+                  colorValue: 0xFF8752F4,
+                  time: 'Just now',
+                  duration: 'Connected',
+                  isOutgoing: false,
+                  isMissed: false,
+                  contactUserId: incoming.callerUserId,
+                );
+                context.read<CallsController>().addCallLog(log);
+
                 // Clear the notification first
                 context.read<SignalingService>().clearIncomingCall();
                 _showingIncomingCall = false;
@@ -155,6 +172,22 @@ class _GlobalIncomingCallListenerState extends State<_GlobalIncomingCallListener
                 );
               },
               onDecline: () {
+                // Log incoming missed/declined call
+                final parts = incoming.callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+                final initials = parts.isEmpty ? 'U' : (parts.length == 1 ? parts[0][0].toUpperCase() : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+                final log = CallLog(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: incoming.callerName,
+                  initials: initials,
+                  colorValue: 0xFF8752F4,
+                  time: 'Just now',
+                  duration: '',
+                  isOutgoing: false,
+                  isMissed: true,
+                  contactUserId: incoming.callerUserId,
+                );
+                context.read<CallsController>().addCallLog(log);
+
                 context.read<SignalingService>().declineCall(
                       incoming.callerUserId,
                       incoming.roomId,
