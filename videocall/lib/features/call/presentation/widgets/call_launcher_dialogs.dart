@@ -5,6 +5,8 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
 import '../../../../core/services/signaling_service.dart';
+import 'package:videocall/features/calls/domain/models/call_log.dart';
+import 'package:videocall/features/calls/presentation/controllers/calls_controller.dart';
 
 import '../pages/call_page.dart';
 
@@ -138,6 +140,14 @@ String _buildRoomId(String userIdA, String userIdB) {
   return 'direct-${ids[0]}-${ids[1]}';
 }
 
+/// Shared helper: derive initials from name
+String _deriveInitials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+  if (parts.isEmpty) return 'U';
+  if (parts.length == 1) return parts[0][0].toUpperCase();
+  return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+}
+
 /// Shared helper: emit call:invite then navigate to CallPage.
 void _launchDirectCall(
   BuildContext context, {
@@ -147,10 +157,16 @@ void _launchDirectCall(
   required String recipientMatricule,
 }) {
   final authCtrl = context.read<AuthController>();
-  final myUserId = authCtrl.currentUser?['id'] as String? ?? '';
-  final myName = authCtrl.currentUser?['fullName'] as String? ??
-      authCtrl.currentUser?['name'] as String? ?? 'Unknown';
-  final myMatricule = authCtrl.currentUser?['matricule'] as String? ?? '';
+  final user = authCtrl.currentUser;
+  final myUserId = user?['id']?.toString() ?? user?['userId']?.toString() ?? '';
+  final myName = user != null
+      ? (user['display_name'] ??
+          user['displayName'] ??
+          ((user['first_name'] != null || user['last_name'] != null)
+              ? '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim()
+              : user['username'] ?? user['matricule'] ?? 'User'))
+      : 'User';
+  final myMatricule = user?['matricule']?.toString() ?? '';
 
   final roomId = _buildRoomId(myUserId, recipientUserId);
 
@@ -162,6 +178,20 @@ void _launchDirectCall(
         callerName: myName,
         callerMatricule: myMatricule,
       );
+
+  // Save outgoing call log
+  final log = CallLog(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    name: recipientName,
+    initials: _deriveInitials(recipientName),
+    colorValue: 0xFF2D5016,
+    time: 'Just now',
+    duration: 'Connected',
+    isOutgoing: true,
+    isMissed: false,
+    contactUserId: recipientUserId,
+  );
+  context.read<CallsController>().addCallLog(log);
 
   Navigator.of(context).push(
     MaterialPageRoute(

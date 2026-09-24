@@ -27,6 +27,15 @@ class WebRTCCallService extends ChangeNotifier {
 
   String? _currentRoomId;
 
+  DateTime? _callStartTime;
+  String get formattedDuration {
+    if (_callStartTime == null) return '00:05';
+    final duration = DateTime.now().difference(_callStartTime!);
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -67,6 +76,7 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('room:joined', (data) async {
       debugPrint('[WebRTC] Joined room: $data');
       _callState = CallState.connected;
+      _callStartTime = DateTime.now();
       notifyListeners();
 
       final map = data as Map<String, dynamic>?;

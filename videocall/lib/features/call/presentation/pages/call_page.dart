@@ -5,6 +5,7 @@ import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
 import '../widgets/signal_indicator.dart';
+import 'call_ended_page.dart';
 
 class CallPage extends StatefulWidget {
   final String callTitle;
@@ -42,15 +43,37 @@ class _CallPageState extends State<CallPage> {
     await _callService.joinCallRoom(widget.roomId, isVideoCall: true);
   }
 
+  bool _hasNavigatedToEnded = false;
+
+  void _navigateToEndedPage() {
+    if (_hasNavigatedToEnded) return;
+    _hasNavigatedToEnded = true;
+
+    final durationStr = _callService.formattedDuration;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => CallEndedPage(
+          callTitle: widget.callTitle,
+          participantCount: widget.participantCount,
+          duration: durationStr.isEmpty || durationStr == '00:00' ? '00:05' : durationStr,
+          quality: 'Good',
+          onBackToHome: () {
+            Navigator.of(context).pushNamedAndRemoveUntil('/calls', (route) => false);
+          },
+          onCallAgain: () {
+            Navigator.of(context).pushReplacementNamed('/calls');
+          },
+        ),
+      ),
+    );
+  }
+
   void _onCallStateChanged() {
     if (mounted) {
       setState(() {});
       if (_callService.callState == CallState.ended) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          Navigator.of(context).pushReplacementNamed('/calls');
-        }
+        _navigateToEndedPage();
       }
     }
   }
@@ -86,11 +109,7 @@ class _CallPageState extends State<CallPage> {
   Future<void> _hangUpAndExit() async {
     await _callService.endCall();
     if (mounted) {
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      } else {
-        Navigator.of(context).pushReplacementNamed('/calls');
-      }
+      _navigateToEndedPage();
     }
   }
 
