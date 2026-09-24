@@ -113,6 +113,12 @@ class SignalingService extends ChangeNotifier {
       _safe(notifyListeners);
     });
 
+    // ── Call ended or canceled by caller ─────────────────────────────────
+    _socket!.on('call:ended', (data) {
+      debugPrint('[Signaling] Call ended: $data');
+      clearIncomingCall();
+    });
+
     _socket!.on('error', (data) {
       debugPrint('[Signaling] Socket error: $data');
     });

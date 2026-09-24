@@ -45,6 +45,13 @@ class _CallPageState extends State<CallPage> {
   void _onCallStateChanged() {
     if (mounted) {
       setState(() {});
+      if (_callService.callState == CallState.ended) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushReplacementNamed('/calls');
+        }
+      }
     }
   }
 
