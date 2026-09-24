@@ -41,71 +41,18 @@ class CallsController extends ChangeNotifier {
       final storedData = storage.getStringList(_storageKey);
 
       if (storedData != null && storedData.isNotEmpty) {
-        _calls = storedData
+        final parsed = storedData
             .map((item) => CallLog.fromJson(jsonDecode(item)))
             .toList();
+        // Remove old mock entries if present
+        _calls = parsed
+            .where((c) => !['1', '2', '3', '4', '5', '6'].contains(c.id))
+            .toList();
+        if (parsed.length != _calls.length) {
+          await _saveToStorage();
+        }
       } else {
-        // Seed default initial logs
-        _calls = [
-          const CallLog(
-            id: '1',
-            name: 'Sarah Chen',
-            initials: 'SC',
-            colorValue: 0xFF8752F4,
-            time: '2m ago',
-            duration: '42:18',
-            isOutgoing: false,
-          ),
-          const CallLog(
-            id: '2',
-            name: 'Design Team',
-            initials: 'DT',
-            colorValue: 0xFF2D5016,
-            time: '1h ago',
-            duration: '1:12:44',
-            isOutgoing: true,
-            isGroup: true,
-            participants: 5,
-          ),
-          const CallLog(
-            id: '3',
-            name: 'Marcus Webb',
-            initials: 'MW',
-            colorValue: 0xFF10A47D,
-            time: '3h ago',
-            duration: '',
-            isMissed: true,
-          ),
-          const CallLog(
-            id: '4',
-            name: 'Priya Nair',
-            initials: 'PN',
-            colorValue: 0xFFFFA00D,
-            time: 'Yesterday',
-            duration: '8:33',
-            isOutgoing: true,
-          ),
-          const CallLog(
-            id: '5',
-            name: 'Engineering Standup',
-            initials: 'ES',
-            colorValue: 0xFF159AB5,
-            time: 'Yesterday',
-            duration: '28:07',
-            isGroup: true,
-            participants: 9,
-          ),
-          const CallLog(
-            id: '6',
-            name: 'James Liu',
-            initials: 'JL',
-            colorValue: 0xFF8752F4,
-            time: 'Mon',
-            duration: '4:22',
-            isOutgoing: false,
-          ),
-        ];
-        await _saveToStorage();
+        _calls = [];
       }
     } catch (e) {
       debugPrint('Error loading call logs: $e');

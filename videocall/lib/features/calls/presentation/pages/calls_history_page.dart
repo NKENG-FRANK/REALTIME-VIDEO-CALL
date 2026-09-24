@@ -7,33 +7,7 @@ import '../../../../core/widgets/hover_widgets.dart';
 import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../domain/models/call_log.dart';
 import '../controllers/calls_controller.dart';
-import '../../../settings/presentation/controllers/settings_controller.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
-
-/// Data model for a call history entry.
-class _CallEntry {
-  final String name;
-  final String initials;
-  final Color color;
-  final String time;
-  final String duration;
-  final bool isMissed;
-  final bool isOutgoing;
-  final bool isGroup;
-  final int? participants;
-
-  const _CallEntry({
-    required this.name,
-    required this.initials,
-    required this.color,
-    required this.time,
-    required this.duration,
-    this.isMissed = false,
-    this.isOutgoing = false,
-    this.isGroup = false,
-    this.participants,
-  });
-}
 
 class CallsHistoryPage extends StatefulWidget {
   const CallsHistoryPage({Key? key}) : super(key: key);
@@ -646,29 +620,6 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
 
   // ── Shared helpers ──
 
-  Widget _actionButton(
-    IconData icon,
-    String label,
-    Color background,
-    Color foreground,
-  ) {
-    return ElevatedButton.icon(
-      onPressed: () {},
-      icon: Icon(icon, size: 15),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: background,
-        foregroundColor: foreground,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        textStyle:
-            const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
-
   Widget _brandMark() => Container(
         width: 25,
         height: 25,
@@ -718,13 +669,4 @@ class _OnlineLabel extends StatelessWidget {
       ],
     );
   }
-}
-
-String _getInitials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
-  if (parts.isEmpty) return 'ME';
-  if (parts.length == 1) {
-    return parts[0][0].toUpperCase();
-  }
-  return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
 }

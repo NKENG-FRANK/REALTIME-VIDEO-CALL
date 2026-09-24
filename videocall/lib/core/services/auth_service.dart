@@ -70,8 +70,15 @@ class AuthService {
       final data = jsonDecode(response.body);
 
       if ((response.statusCode == 200 || response.statusCode == 201) &&
-          (data['accessToken'] != null || data['user'] != null)) {
-        return {'success': true, 'message': 'Registration successful'};
+          data['accessToken'] != null) {
+        final token = data['accessToken'];
+        final user = data['user'] ?? {'matricule': matricule};
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_tokenKey, token);
+        await prefs.setString(_userKey, jsonEncode(user));
+
+        return {'success': true, 'user': user, 'token': token};
       } else {
         final errorMsg = data['error'] is String
             ? data['error']
@@ -100,6 +107,36 @@ class AuthService {
     final raw = prefs.getString(_userKey);
     if (raw != null) {
       return jsonDecode(raw);
+    }
+    return null;
+  }
+
+  /// Validate current stored token against backend GET /api/v1/users/profile
+  Future<Map<String, dynamic>?> validateOrFetchProfile() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse(ApiConfig.profileUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final profile = jsonDecode(response.body);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_userKey, jsonEncode(profile));
+        return profile;
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // Token is expired or invalid — clear stored token
+        await logout();
+        return null;
+      }
+    } catch (e) {
+      // If server unreachable, retain cached profile
     }
     return null;
   }

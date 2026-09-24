@@ -54,9 +54,41 @@ export async function register(req: Request, res: Response, next: NextFunction) 
         [userId]
       );
 
+      // Generate session tokens on registration
+      const accessToken = generateAccessToken({ userId });
+      const refreshToken = generateRefreshToken();
+      const ipAddress = req.ip || req.socket.remoteAddress;
+
+      const refreshExpire = new Date();
+      refreshExpire.setDate(refreshExpire.getDate() + 7);
+
+      const sessionRes = await client.query(
+        `INSERT INTO user_sessions (user_id, refresh_token_hash, client_info, ip_address, expires_at)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [userId, refreshToken, req.body.clientInfo || 'Unknown Client', ipAddress, refreshExpire]
+      );
+
       await client.query('COMMIT');
 
-      res.status(201).json({ message: 'User registered successfully', userId });
+      res.status(201).json({
+        message: 'User registered successfully',
+        accessToken,
+        refreshToken,
+        sessionId: sessionRes.rows[0].id,
+        user: {
+          id: userId,
+          matricule,
+          username,
+          display_name: displayName,
+          first_name: firstName ?? '',
+          last_name: lastName ?? '',
+          department: '',
+          ministry: '',
+          division: '',
+          position_title: '',
+          office_location: '',
+        },
+      });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
