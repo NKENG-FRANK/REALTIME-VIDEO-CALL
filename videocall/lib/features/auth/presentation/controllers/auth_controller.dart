@@ -36,13 +36,23 @@ class AuthController extends ChangeNotifier {
 
   Future<void> _checkAuthStatus() async {
     final token = await AuthService.getToken();
-    if (token != null) {
-      _isAuthenticated = true;
-      _currentUser = await AuthService.getCurrentUser();
-      if (_currentUser != null) {
-        onUserLoaded?.call(_currentUser!, token);
+    if (token != null && token.isNotEmpty) {
+      final updatedProfile = await _authService.validateOrFetchProfile();
+      final freshToken = await AuthService.getToken();
+
+      if (freshToken != null && freshToken.isNotEmpty) {
+        _isAuthenticated = true;
+        _currentUser = updatedProfile ?? await AuthService.getCurrentUser();
+        if (_currentUser != null) {
+          onUserLoaded?.call(_currentUser!, freshToken);
+        }
+        notifyListeners();
+      } else {
+        // Token was invalid or expired and cleared
+        _isAuthenticated = false;
+        _currentUser = null;
+        notifyListeners();
       }
-      notifyListeners();
     }
   }
 
@@ -210,8 +220,15 @@ class AuthController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        // Auto-login after registration
-        return await signIn();
+        _isAuthenticated = true;
+        _errorMessage = null;
+        _currentUser = result['user'];
+        final token = result['token'] as String? ?? '';
+        if (_currentUser != null && token.isNotEmpty) {
+          onUserLoaded?.call(_currentUser!, token);
+        }
+        notifyListeners();
+        return true;
       } else {
         _errorMessage = result['message'] ?? 'Sign up failed';
         notifyListeners();
