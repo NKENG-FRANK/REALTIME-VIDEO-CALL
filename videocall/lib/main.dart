@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
-import 'core/services/auth_service.dart';
 import 'core/services/signaling_service.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/calls/presentation/controllers/calls_controller.dart';
@@ -48,14 +47,10 @@ class MyApp extends StatelessWidget {
           final settingsCtrl = context.read<SettingsController>();
           final signalingService = context.read<SignalingService>();
 
-          authCtrl.onUserLoaded = (user) {
+          authCtrl.onUserLoaded = (user, token) {
             settingsCtrl.seedFromUser(user);
-            // Connect the persistent signaling socket as soon as the user is known
-            AuthService.getToken().then((token) {
-              if (token != null) {
-                signalingService.connect(token);
-              }
-            });
+            // Connect the persistent signaling socket with the real JWT
+            signalingService.connect(token);
           };
 
           // Consumer listens to SettingsController so locale updates immediately
@@ -85,7 +80,12 @@ class MyApp extends StatelessWidget {
                   GlobalCupertinoLocalizations.delegate,
                 ],
 
-                home: const _AppRoot(),
+                builder: (context, child) {
+                  return _GlobalIncomingCallListener(
+                    child: child ?? const SizedBox.shrink(),
+                  );
+                },
+                home: const AuthPage(),
                 debugShowCheckedModeBanner: false,
                 routes: {
                   '/auth': (context) => const AuthPage(),
@@ -106,21 +106,21 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// Root widget that wraps the home page and listens for incoming calls
-/// globally — so the IncomingCallPage can appear over any screen.
-class _AppRoot extends StatefulWidget {
-  const _AppRoot({Key? key}) : super(key: key);
+/// Global widget that wraps the navigator and listens for incoming calls
+/// continuously — ensuring IncomingCallPage appears over any active screen.
+class _GlobalIncomingCallListener extends StatefulWidget {
+  final Widget child;
+  const _GlobalIncomingCallListener({Key? key, required this.child}) : super(key: key);
 
   @override
-  State<_AppRoot> createState() => _AppRootState();
+  State<_GlobalIncomingCallListener> createState() => _GlobalIncomingCallListenerState();
 }
 
-class _AppRootState extends State<_AppRoot> {
+class _GlobalIncomingCallListenerState extends State<_GlobalIncomingCallListener> {
   bool _showingIncomingCall = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+  Widget build(BuildContext context) {
     // Listen to SignalingService for incoming call notifications
     final signaling = context.watch<SignalingService>();
     final incoming = signaling.incomingCall;
@@ -166,14 +166,14 @@ class _AppRootState extends State<_AppRoot> {
         ).then((_) {
           // If the user dismisses via the back button, reset the flag
           _showingIncomingCall = false;
-          context.read<SignalingService>().clearIncomingCall();
+          if (mounted) {
+            context.read<SignalingService>().clearIncomingCall();
+          }
         });
       });
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return const AuthPage();
+    return widget.child;
   }
 }
+
