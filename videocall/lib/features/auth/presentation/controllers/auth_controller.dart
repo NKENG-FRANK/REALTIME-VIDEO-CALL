@@ -7,9 +7,9 @@ class AuthController extends ChangeNotifier {
   final AuthService _authService = AuthService();
 
   /// Optional callback invoked after a successful login/auth-check with the
-  /// user profile map. Use this to seed other controllers (e.g. SettingsController)
-  /// without creating a hard dependency.
-  Function(Map<String, dynamic>)? onUserLoaded;
+  /// user profile map and JWT token. Use this to seed other controllers
+  /// (e.g. SettingsController, SignalingService) without creating hard dependencies.
+  Function(Map<String, dynamic> user, String token)? onUserLoaded;
 
   // UI State
   bool _isSignUp = false;
@@ -27,7 +27,11 @@ class AuthController extends ChangeNotifier {
   Map<String, dynamic>? _currentUser;
 
   AuthController() {
-    _checkAuthStatus();
+    // Defer auth check until after the first frame so that main.dart's Builder
+    // has time to assign `onUserLoaded` before we try to call it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAuthStatus();
+    });
   }
 
   Future<void> _checkAuthStatus() async {
@@ -36,7 +40,7 @@ class AuthController extends ChangeNotifier {
       _isAuthenticated = true;
       _currentUser = await AuthService.getCurrentUser();
       if (_currentUser != null) {
-        onUserLoaded?.call(_currentUser!);
+        onUserLoaded?.call(_currentUser!, token);
       }
       notifyListeners();
     }
@@ -145,8 +149,9 @@ class AuthController extends ChangeNotifier {
         _isAuthenticated = true;
         _errorMessage = null;
         _currentUser = result['user'];
+        final token = result['token'] as String? ?? '';
         if (_currentUser != null) {
-          onUserLoaded?.call(_currentUser!);
+          onUserLoaded?.call(_currentUser!, token);
         }
         notifyListeners();
         return true;

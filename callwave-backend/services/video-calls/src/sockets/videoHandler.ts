@@ -31,13 +31,16 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     }) => {
       try {
         const { calleeUserId, roomId, callType, callerName, callerMatricule } = data;
+        console.log(`[VideoHandler] Received call:invite from ${userId} to ${calleeUserId} (roomId: ${roomId})`);
         const calleeSocketId = await redis.hget('video:presence', calleeUserId);
 
         if (!calleeSocketId) {
+          console.log(`[VideoHandler] Callee ${calleeUserId} NOT found in Redis presence (callee offline)`);
           socket.emit('call:callee_offline', { calleeUserId });
           return;
         }
 
+        console.log(`[VideoHandler] Forwarding call:incoming to calleeSocketId ${calleeSocketId}`);
         io.to(calleeSocketId).emit('call:incoming', {
           roomId,
           callType,
@@ -49,6 +52,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
         // Acknowledge to the caller that the invite was delivered
         socket.emit('call:invite_sent', { calleeUserId, roomId });
       } catch (error: any) {
+        console.error(`[VideoHandler] Error handling call:invite:`, error);
         socket.emit('error', { message: error.message });
       }
     }
@@ -58,6 +62,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
    * Callee declines — notify the caller that the call was rejected.
    */
   socket.on('call:decline', async (data: { callerUserId: string; roomId: string }) => {
+    console.log(`[VideoHandler] Callee ${userId} declined call from caller ${data.callerUserId}`);
     const callerSocketId = await redis.hget('video:presence', data.callerUserId);
     if (callerSocketId) {
       io.to(callerSocketId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
