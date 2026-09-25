@@ -22,6 +22,12 @@ class WebRTCCallService extends ChangeNotifier {
   CallState _callState = CallState.idle;
   CallState get callState => _callState;
 
+  void _safeNotify() {
+    if (!_disposed) {
+      Future.microtask(notifyListeners);
+    }
+  }
+
   bool _isMicMuted = false;
   bool get isMicMuted => _isMicMuted;
 
@@ -80,7 +86,7 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Joined room: $data');
       _callState = CallState.connected;
       _callStartTime = DateTime.now();
-      notifyListeners();
+      _safeNotify();
 
       final map = data as Map<String, dynamic>?;
       final existingParticipants = map?['participants'] as List?;
@@ -182,7 +188,7 @@ class WebRTCCallService extends ChangeNotifier {
     try {
       _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       localRenderer.srcObject = _localStream;
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       debugPrint('[WebRTC] Error getting user media: $e');
     }
@@ -192,7 +198,7 @@ class WebRTCCallService extends ChangeNotifier {
   Future<void> joinCallRoom(String roomId, {bool isVideoCall = true}) async {
     _currentRoomId = roomId;
     _callState = CallState.connecting;
-    notifyListeners();
+    _safeNotify();
 
     await startLocalMedia(video: isVideoCall, audio: true);
 
@@ -219,7 +225,7 @@ class WebRTCCallService extends ChangeNotifier {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
         remoteRenderer.srcObject = _remoteStream;
-        notifyListeners();
+        _safeNotify();
       }
     };
 
@@ -286,7 +292,7 @@ class WebRTCCallService extends ChangeNotifier {
       if (audioTracks.isNotEmpty) {
         _isMicMuted = !_isMicMuted;
         audioTracks[0].enabled = !_isMicMuted;
-        notifyListeners();
+        _safeNotify();
       }
     }
   }
@@ -298,7 +304,7 @@ class WebRTCCallService extends ChangeNotifier {
       if (videoTracks.isNotEmpty) {
         _isVideoOff = !_isVideoOff;
         videoTracks[0].enabled = !_isVideoOff;
-        notifyListeners();
+        _safeNotify();
       }
     }
   }
@@ -346,17 +352,13 @@ class WebRTCCallService extends ChangeNotifier {
     remoteRenderer.srcObject = null;
 
     _currentRoomId = null;
-    if (!_disposed) {
-      notifyListeners();
-    }
+    _safeNotify();
 
     // Reset state back to idle after delay
     Future.delayed(const Duration(seconds: 1), () {
       if (_disposed) return;
       _callState = CallState.idle;
-      if (!_disposed) {
-        notifyListeners();
-      }
+      _safeNotify();
     });
   }
 
