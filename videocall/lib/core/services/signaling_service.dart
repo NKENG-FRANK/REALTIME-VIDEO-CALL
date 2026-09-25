@@ -133,7 +133,7 @@ class SignalingService extends ChangeNotifier {
     _socket = null;
     _incomingCall = null;
     _calleeOffline = false;
-    if (!_disposed) notifyListeners();
+    if (!_disposed) Future.microtask(notifyListeners);
   }
 
   // ── Caller API ────────────────────────────────────────────────────────────
@@ -174,14 +174,14 @@ class SignalingService extends ChangeNotifier {
   /// Clear the pending incoming call (after accept or dismiss).
   void clearIncomingCall() {
     _incomingCall = null;
-    if (!_disposed) notifyListeners();
+    if (!_disposed) Future.microtask(notifyListeners);
   }
 
   // ── Internal helpers ─────────────────────────────────────────────────────
 
-  /// Run [fn] only if this service has not been disposed.
+  /// Run [fn] only if this service has not been disposed, deferred to avoid locked tree.
   void _safe(VoidCallback fn) {
-    if (!_disposed) fn();
+    if (!_disposed) Future.microtask(fn);
   }
 
   @override
