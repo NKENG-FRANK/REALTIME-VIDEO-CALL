@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
@@ -12,6 +13,7 @@ class CallPage extends StatefulWidget {
   final String roomId;
   final String? userToken;
   final int participantCount;
+  final bool isVideoCall;
 
   const CallPage({
     Key? key,
@@ -19,6 +21,7 @@ class CallPage extends StatefulWidget {
     this.roomId = 'demo-room-1',
     this.userToken,
     this.participantCount = 2,
+    this.isVideoCall = true,
   }) : super(key: key);
 
   @override
@@ -27,6 +30,7 @@ class CallPage extends StatefulWidget {
 
 class _CallPageState extends State<CallPage> {
   late final WebRTCCallService _callService;
+  bool _hasNavigatedToEnded = false;
 
   @override
   void initState() {
@@ -37,32 +41,47 @@ class _CallPageState extends State<CallPage> {
   }
 
   Future<void> _initializeCall() async {
-    if (widget.userToken != null) {
-      await _callService.initializeSocket(widget.userToken!);
+    // Get token: prefer passed token, fall back to stored token
+    String? token = widget.userToken;
+    token ??= await AuthService.getToken();
+
+    if (token != null && token.isNotEmpty) {
+      await _callService.initializeSocket(token);
+    } else {
+      debugPrint('[CallPage] No auth token found — cannot connect WebRTC socket');
     }
-    await _callService.joinCallRoom(widget.roomId, isVideoCall: true);
+
+    await _callService.joinCallRoom(widget.roomId, isVideoCall: widget.isVideoCall);
   }
 
-  bool _hasNavigatedToEnded = false;
-
   void _navigateToEndedPage() {
-    if (_hasNavigatedToEnded) return;
+    if (_hasNavigatedToEnded || !mounted) return;
     _hasNavigatedToEnded = true;
 
     final durationStr = _callService.formattedDuration;
+    final callTitle = widget.callTitle;
+    final participantCount = widget.participantCount;
 
+    // Navigate using the current context while it's still valid
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => CallEndedPage(
-          callTitle: widget.callTitle,
-          participantCount: widget.participantCount,
-          duration: durationStr.isEmpty || durationStr == '00:00' ? '00:05' : durationStr,
+        builder: (newContext) => CallEndedPage(
+          callTitle: callTitle,
+          participantCount: participantCount,
+          duration: (durationStr == '00:00' || durationStr.isEmpty) ? '00:05' : durationStr,
           quality: 'Good',
+          // Callbacks use newContext — the CallEndedPage's own context
           onBackToHome: () {
-            Navigator.of(context).pushNamedAndRemoveUntil('/calls', (route) => false);
+            Navigator.of(newContext).pushNamedAndRemoveUntil(
+              '/calls',
+              (route) => false,
+            );
           },
           onCallAgain: () {
-            Navigator.of(context).pushReplacementNamed('/calls');
+            Navigator.of(newContext).pushNamedAndRemoveUntil(
+              '/calls',
+              (route) => false,
+            );
           },
         ),
       ),
@@ -70,11 +89,10 @@ class _CallPageState extends State<CallPage> {
   }
 
   void _onCallStateChanged() {
-    if (mounted) {
-      setState(() {});
-      if (_callService.callState == CallState.ended) {
-        _navigateToEndedPage();
-      }
+    if (!mounted) return;
+    setState(() {});
+    if (_callService.callState == CallState.ended) {
+      _navigateToEndedPage();
     }
   }
 
@@ -186,8 +204,8 @@ class _CallPageState extends State<CallPage> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
+        children: const [
+          Text(
             'PARTICIPANTS (2)',
             style: TextStyle(
               color: AppColors.textMuted,
@@ -195,15 +213,15 @@ class _CallPageState extends State<CallPage> {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 14),
-          const ParticipantCard(
+          SizedBox(height: 14),
+          ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
             avatarColor: AppColors.primary,
             signalStrength: 3,
           ),
-          const SizedBox(height: 10),
-          const ParticipantCard(
+          SizedBox(height: 10),
+          ParticipantCard(
             name: 'Remote Peer',
             initials: 'RP',
             avatarColor: Color(0xFF10A47D),
@@ -222,7 +240,10 @@ class _CallPageState extends State<CallPage> {
           child: Container(
             color: Colors.black,
             child: _callService.remoteRenderer.srcObject != null
-                ? RTCVideoView(_callService.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                ? RTCVideoView(
+                    _callService.remoteRenderer,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  )
                 : const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -263,7 +284,11 @@ class _CallPageState extends State<CallPage> {
                 ? const Center(
                     child: Icon(Icons.videocam_off, color: Colors.white54, size: 36),
                   )
-                : RTCVideoView(_callService.localRenderer, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                : RTCVideoView(
+                    _callService.localRenderer,
+                    mirror: true,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
           ),
         ),
       ],
