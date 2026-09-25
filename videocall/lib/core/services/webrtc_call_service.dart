@@ -11,7 +11,9 @@ class WebRTCCallService extends ChangeNotifier {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   RTCPeerConnection? _peerConnection;
+  final List<RTCIceCandidate> _pendingCandidates = []; // buffered until remote desc is set
   
+
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
@@ -82,15 +84,17 @@ class WebRTCCallService extends ChangeNotifier {
       final map = data as Map<String, dynamic>?;
       final existingParticipants = map?['participants'] as List?;
       if (existingParticipants != null && existingParticipants.isNotEmpty) {
-        // We are joining a room with an existing peer, trigger offer
+        // This peer joined a room that already has participants → create the offer
         await _createOffer();
       }
+      // else: we are first; wait for peer to join and send us an offer
     });
 
     _socket!.on('room:participant_joined', (data) async {
       debugPrint('[WebRTC] Participant joined: $data');
-      // Create peer connection & offer when new peer arrives
-      await _createOffer();
+      // Only the answerer side receives this event (the first person in the room).
+      // They should NOT create an offer — the new joiner (offerer) will send one.
+      // Nothing to do here; we wait for the incoming webrtc:offer.
     });
 
     _socket!.on('webrtc:offer', (data) async {
@@ -102,23 +106,34 @@ class WebRTCCallService extends ChangeNotifier {
 
     _socket!.on('webrtc:answer', (data) async {
       debugPrint('[WebRTC] Received WebRTC answer');
+      if (_peerConnection == null) return;
       final map = data as Map<String, dynamic>;
       final sdpMap = map['sdp'] as Map<String, dynamic>;
       final description = RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
-      await _peerConnection?.setRemoteDescription(description);
+      await _peerConnection!.setRemoteDescription(description);
+      // Drain any buffered ICE candidates
+      for (final c in _pendingCandidates) {
+        await _peerConnection!.addCandidate(c);
+      }
+      _pendingCandidates.clear();
     });
 
     _socket!.on('webrtc:candidate', (data) async {
       debugPrint('[WebRTC] Received ICE candidate');
       final map = data as Map<String, dynamic>;
       final candidateMap = map['candidate'] as Map<String, dynamic>?;
-      if (candidateMap != null && _peerConnection != null) {
-        final candidate = RTCIceCandidate(
-          candidateMap['candidate'],
-          candidateMap['sdpMid'],
-          candidateMap['sdpMLineIndex'],
-        );
-        await _peerConnection?.addCandidate(candidate);
+      if (candidateMap == null) return;
+      final candidate = RTCIceCandidate(
+        candidateMap['candidate'],
+        candidateMap['sdpMid'],
+        candidateMap['sdpMLineIndex'],
+      );
+      final remoteDesc = await _peerConnection?.getRemoteDescription();
+      if (_peerConnection != null && remoteDesc != null) {
+        await _peerConnection!.addCandidate(candidate);
+      } else {
+        // Buffer until remote description is set
+        _pendingCandidates.add(candidate);
       }
     });
 
@@ -309,6 +324,7 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Error closing peer connection: $e');
     }
     _peerConnection = null;
+    _pendingCandidates.clear();
 
     _localStream?.getTracks().forEach((track) => track.stop());
     await _localStream?.dispose();
@@ -334,6 +350,7 @@ class WebRTCCallService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _pendingCandidates.clear();
     _peerConnection?.close();
     _peerConnection?.dispose();
     localRenderer.dispose();
