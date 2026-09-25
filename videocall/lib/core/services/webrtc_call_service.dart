@@ -124,6 +124,9 @@ class WebRTCCallService extends ChangeNotifier {
     });
 
     _socket!.on('webrtc:candidate', (data) async {
+      // Receiver – log when a remote ICE candidate arrives
+      debugPrint('[WebRTC] <<< Remote ICE candidate arrived: $data');
+      // Existing log (kept for consistency)
       debugPrint('[WebRTC] Received ICE candidate');
       final map = data as Map<String, dynamic>;
       final candidateMap = map['candidate'] as Map<String, dynamic>?;
