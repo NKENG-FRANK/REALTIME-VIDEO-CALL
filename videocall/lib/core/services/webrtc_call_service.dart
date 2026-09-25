@@ -225,6 +225,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
       if (_currentRoomId != null && candidate.candidate != null) {
+        debugPrint('[WebRTC] >>> Sending ICE candidate: ${candidate.toMap()}');
         _socket?.emit('webrtc:candidate', {
           'roomId': _currentRoomId,
           'candidate': candidate.toMap(),
@@ -345,19 +346,24 @@ class WebRTCCallService extends ChangeNotifier {
     remoteRenderer.srcObject = null;
 
     _currentRoomId = null;
-    notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+    }
 
     // Reset state back to idle after delay
     Future.delayed(const Duration(seconds: 1), () {
       if (_disposed) return;
       _callState = CallState.idle;
-      notifyListeners();
+      if (!_disposed) {
+        notifyListeners();
+      }
     });
   }
 
   @override
   void dispose() {
     _disposed = true;
+    removeSocketListeners();
     _pendingCandidates.clear();
     _peerConnection?.close();
     _peerConnection?.dispose();
@@ -365,5 +371,19 @@ class WebRTCCallService extends ChangeNotifier {
     remoteRenderer.dispose();
     _socket?.dispose();
     super.dispose();
+  }
+
+  /// Detach all socket event listeners to prevent stray notifications after the page is disposed.
+  void removeSocketListeners() {
+    if (_socket == null) return;
+    _socket!
+      ..off('room:joined')
+      ..off('room:participant_joined')
+      ..off('webrtc:offer')
+      ..off('webrtc:answer')
+      ..off('webrtc:candidate')
+      ..off('call:ended')
+      ..off('room:participant_left')
+      ..off('error');
   }
 }
