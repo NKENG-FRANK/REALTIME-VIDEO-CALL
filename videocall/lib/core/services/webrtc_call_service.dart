@@ -11,6 +11,7 @@ class WebRTCCallService extends ChangeNotifier {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   RTCPeerConnection? _peerConnection;
+  bool _isFirstPeer = false; // true if we joined a room with no other participants
   final List<RTCIceCandidate> _pendingCandidates = []; // buffered until remote desc is set
   
 
@@ -84,17 +85,21 @@ class WebRTCCallService extends ChangeNotifier {
       final map = data as Map<String, dynamic>?;
       final existingParticipants = map?['participants'] as List?;
       if (existingParticipants != null && existingParticipants.isNotEmpty) {
-        // This peer joined a room that already has participants → create the offer
+        // Existing participants – we are the later joiner, create the offer
         await _createOffer();
+        _isFirstPeer = false;
+      } else {
+        // No participants – we are the first peer, wait for another to join
+        _isFirstPeer = true;
       }
-      // else: we are first; wait for peer to join and send us an offer
     });
 
     _socket!.on('room:participant_joined', (data) async {
       debugPrint('[WebRTC] Participant joined: $data');
-      // Only the answerer side receives this event (the first person in the room).
-      // They should NOT create an offer — the new joiner (offerer) will send one.
-      // Nothing to do here; we wait for the incoming webrtc:offer.
+      // Create an offer only if we don't already have a peer connection (i.e., we are the first side waiting)
+      if (_peerConnection == null) {
+        await _createOffer();
+      }
     });
 
     _socket!.on('webrtc:offer', (data) async {
