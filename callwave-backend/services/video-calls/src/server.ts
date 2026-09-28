@@ -49,13 +49,22 @@ io.on('connection', async (socket) => {
   const userId = socket.data.userId;
   console.log(`Video socket connected: ${socket.id}, User: ${userId}`);
 
+  // Join a room specific to this user to track all their sockets
+  socket.join(userId);
+
   // Track presence in Redis
   await redis.hset('video:presence', userId, socket.id);
 
   socket.on('disconnect', async () => {
     const current = await redis.hget('video:presence', userId);
     if (current === socket.id) {
-      await redis.hdel('video:presence', userId);
+      const sockets = await io.in(userId).fetchSockets();
+      if (sockets.length > 0) {
+        // Another socket for this user is still connected, assign presence to it
+        await redis.hset('video:presence', userId, sockets[0].id);
+      } else {
+        await redis.hdel('video:presence', userId);
+      }
     }
   });
 
