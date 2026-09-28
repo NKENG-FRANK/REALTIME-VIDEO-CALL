@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
+
 import '../../config/api_config.dart';
+import 'auth_service.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ class IncomingCallData {
 /// - Allow the caller to emit `call:invite` before joining the room.
 /// - Allow the callee to emit `call:decline`.
 class SignalingService extends ChangeNotifier {
-  IO.Socket? _socket;
+  io.Socket? _socket;
   bool _disposed = false;
 
   IncomingCallData? _incomingCall;
@@ -58,9 +60,9 @@ class SignalingService extends ChangeNotifier {
       return;
     }
 
-    _socket = IO.io(
+    _socket = io.io(
       ApiConfig.videoCallsBaseUrl,
-      IO.OptionBuilder()
+      io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': userToken})
           .disableAutoConnect()
@@ -140,17 +142,38 @@ class SignalingService extends ChangeNotifier {
 
   /// Emit `call:invite` to the backend so the callee is notified.
   /// Call this BEFORE navigating to [CallPage].
-  void sendCallInvite({
+  Future<void> sendCallInvite({
     required String calleeUserId,
     required String roomId,
     required bool isVideoCall,
     required String callerName,
     required String callerMatricule,
-  }) {
+  }) async {
     if (_socket == null || !_socket!.connected) {
-      debugPrint('[Signaling] Cannot send invite: socket not connected');
+      debugPrint(
+        '[Signaling] Socket not connected in sendCallInvite, attempting connection...',
+      );
+      final token = await AuthService.getToken();
+      if (token != null && token.isNotEmpty) {
+        await connect(token);
+        int waitMs = 0;
+        while ((_socket == null || !_socket!.connected) && waitMs < 5000) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          waitMs += 100;
+        }
+      }
+    }
+
+    if (_socket == null || !_socket!.connected) {
+      debugPrint(
+        '[Signaling] Cannot send invite: socket not connected after retry',
+      );
       return;
     }
+
+    debugPrint(
+      '[Signaling] Sending call:invite to $calleeUserId for room $roomId',
+    );
     _socket!.emit('call:invite', {
       'calleeUserId': calleeUserId,
       'roomId': roomId,
