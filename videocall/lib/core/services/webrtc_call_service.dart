@@ -232,6 +232,21 @@ class WebRTCCallService extends ChangeNotifier {
     await _initRenderersFuture;
     await startLocalMedia(video: isVideoCall, audio: true);
 
+    if (_socket != null && !_socket!.connected) {
+      debugPrint(
+        '[WebRTC] Socket not connected yet, waiting for connection...',
+      );
+      _socket!.connect();
+      int waitMs = 0;
+      while (!_socket!.connected && waitMs < 5000) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waitMs += 100;
+      }
+    }
+
+    debugPrint(
+      '[WebRTC] Emitting room:join for room $roomId (connected: ${_socket?.connected})',
+    );
     _socket?.emit('room:join', {
       'roomId': roomId,
       'callType': isVideoCall ? 'DIRECT_VIDEO' : 'DIRECT_AUDIO',
@@ -250,13 +265,18 @@ class WebRTCCallService extends ChangeNotifier {
       }
     }
 
-    _peerConnection!.onTrack = (RTCTrackEvent event) {
-      debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
+    _peerConnection!.onTrack = (RTCTrackEvent event) async {
+      debugPrint(
+        '[WebRTC] Remote track received: ${event.track.kind}, streams: ${event.streams.length}',
+      );
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
-        remoteRenderer.srcObject = _remoteStream;
-        _safeNotify();
+      } else {
+        _remoteStream ??= await createLocalMediaStream('remote_stream');
+        await _remoteStream!.addTrack(event.track);
       }
+      remoteRenderer.srcObject = _remoteStream;
+      _safeNotify();
     };
 
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+
 import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
+import 'core/services/auth_service.dart';
 import 'core/services/signaling_service.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/calls/domain/models/call_log.dart';
@@ -53,6 +55,14 @@ class MyApp extends StatelessWidget {
             // Connect the persistent signaling socket with the real JWT
             signalingService.connect(token);
           };
+
+          if (authCtrl.isAuthenticated && !signalingService.isConnected) {
+            AuthService.getToken().then((token) {
+              if (token != null && token.isNotEmpty) {
+                signalingService.connect(token);
+              }
+            });
+          }
 
           // Consumer listens to SettingsController so locale updates immediately
           // when the user changes the language in Settings.
@@ -111,13 +121,16 @@ class MyApp extends StatelessWidget {
 /// continuously — ensuring IncomingCallPage appears over any active screen.
 class _GlobalIncomingCallListener extends StatefulWidget {
   final Widget child;
-  const _GlobalIncomingCallListener({Key? key, required this.child}) : super(key: key);
+  const _GlobalIncomingCallListener({Key? key, required this.child})
+    : super(key: key);
 
   @override
-  State<_GlobalIncomingCallListener> createState() => _GlobalIncomingCallListenerState();
+  State<_GlobalIncomingCallListener> createState() =>
+      _GlobalIncomingCallListenerState();
 }
 
-class _GlobalIncomingCallListenerState extends State<_GlobalIncomingCallListener> {
+class _GlobalIncomingCallListenerState
+    extends State<_GlobalIncomingCallListener> {
   bool _showingIncomingCall = false;
 
   @override
@@ -131,82 +144,99 @@ class _GlobalIncomingCallListenerState extends State<_GlobalIncomingCallListener
       // Push after the current frame so we don't call setState/Navigator
       // during a build cycle.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute<void>(
-            fullscreenDialog: true,
-            builder: (_) => IncomingCallPage(
-              callerName: incoming.callerName,
-              callerMatricule: incoming.callerMatricule,
-              roomId: incoming.roomId,
-              isVideoCall: incoming.isVideoCall,
-              onAccept: () {
-                // Log incoming accepted call
-                final parts = incoming.callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
-                final initials = parts.isEmpty ? 'U' : (parts.length == 1 ? parts[0][0].toUpperCase() : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
-                final log = CallLog(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  name: incoming.callerName,
-                  initials: initials,
-                  colorValue: 0xFF8752F4,
-                  time: 'Just now',
-                  duration: 'Connected',
-                  isOutgoing: false,
-                  isMissed: false,
-                  contactUserId: incoming.callerUserId,
-                );
-                context.read<CallsController>().addCallLog(log);
+        navigatorKey.currentState
+            ?.push(
+              MaterialPageRoute<void>(
+                fullscreenDialog: true,
+                builder: (_) => IncomingCallPage(
+                  callerName: incoming.callerName,
+                  callerMatricule: incoming.callerMatricule,
+                  roomId: incoming.roomId,
+                  isVideoCall: incoming.isVideoCall,
+                  onAccept: () {
+                    // Log incoming accepted call
+                    final parts = incoming.callerName
+                        .trim()
+                        .split(RegExp(r'\s+'))
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    final initials = parts.isEmpty
+                        ? 'U'
+                        : (parts.length == 1
+                              ? parts[0][0].toUpperCase()
+                              : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+                    final log = CallLog(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: incoming.callerName,
+                      initials: initials,
+                      colorValue: 0xFF8752F4,
+                      time: 'Just now',
+                      duration: 'Connected',
+                      isOutgoing: false,
+                      isMissed: false,
+                      contactUserId: incoming.callerUserId,
+                    );
+                    context.read<CallsController>().addCallLog(log);
 
-                // Clear the notification first
-                context.read<SignalingService>().clearIncomingCall();
-                _showingIncomingCall = false;
-                // Navigate to the call screen with real room data
-                navigatorKey.currentState?.pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => CallPage(
-                      callTitle: incoming.isVideoCall
-                          ? 'Video Call – ${incoming.callerName}'
-                          : 'Audio Call – ${incoming.callerName}',
-                      roomId: incoming.roomId,
-                    ),
-                  ),
-                );
-              },
-              onDecline: () {
-                // Log incoming missed/declined call
-                final parts = incoming.callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
-                final initials = parts.isEmpty ? 'U' : (parts.length == 1 ? parts[0][0].toUpperCase() : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
-                final log = CallLog(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  name: incoming.callerName,
-                  initials: initials,
-                  colorValue: 0xFF8752F4,
-                  time: 'Just now',
-                  duration: '',
-                  isOutgoing: false,
-                  isMissed: true,
-                  contactUserId: incoming.callerUserId,
-                );
-                context.read<CallsController>().addCallLog(log);
+                    // Clear the notification first
+                    context.read<SignalingService>().clearIncomingCall();
+                    _showingIncomingCall = false;
+                    // Navigate to the call screen with real room data
+                    navigatorKey.currentState?.pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CallPage(
+                          callTitle: incoming.isVideoCall
+                              ? 'Video Call – ${incoming.callerName}'
+                              : 'Audio Call – ${incoming.callerName}',
+                          roomId: incoming.roomId,
+                        ),
+                      ),
+                    );
+                  },
+                  onDecline: () {
+                    // Log incoming missed/declined call
+                    final parts = incoming.callerName
+                        .trim()
+                        .split(RegExp(r'\s+'))
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    final initials = parts.isEmpty
+                        ? 'U'
+                        : (parts.length == 1
+                              ? parts[0][0].toUpperCase()
+                              : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+                    final log = CallLog(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: incoming.callerName,
+                      initials: initials,
+                      colorValue: 0xFF8752F4,
+                      time: 'Just now',
+                      duration: '',
+                      isOutgoing: false,
+                      isMissed: true,
+                      contactUserId: incoming.callerUserId,
+                    );
+                    context.read<CallsController>().addCallLog(log);
 
-                context.read<SignalingService>().declineCall(
+                    context.read<SignalingService>().declineCall(
                       incoming.callerUserId,
                       incoming.roomId,
                     );
-                _showingIncomingCall = false;
-              },
-            ),
-          ),
-        ).then((_) {
-          // If the user dismisses via the back button, reset the flag
-          _showingIncomingCall = false;
-          if (mounted) {
-            context.read<SignalingService>().clearIncomingCall();
-          }
-        });
+                    _showingIncomingCall = false;
+                  },
+                ),
+              ),
+            )
+            .then((_) {
+              // If the user dismisses via the back button, reset the flag
+              _showingIncomingCall = false;
+              if (mounted) {
+                context.read<SignalingService>().clearIncomingCall();
+              }
+            });
       });
     }
 
     return widget.child;
   }
 }
-
