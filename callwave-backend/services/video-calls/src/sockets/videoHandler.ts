@@ -101,9 +101,9 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   });
 
   socket.on('disconnect', async () => {
-    // Find any rooms this user is in and clean up
+    // Clean up only call rooms (not the userId presence room)
     socket.rooms.forEach((roomId) => {
-      if (roomId !== socket.id) {
+      if (roomId !== socket.id && roomId !== userId) {
         leaveRoom(socket, io, userId, roomId);
       }
     });
