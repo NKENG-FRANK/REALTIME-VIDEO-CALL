@@ -133,11 +133,16 @@ void showCallTypeSelectionDialog(
   );
 }
 
-/// Build a deterministic room ID from two user IDs so both parties always
-/// land in the same room regardless of who initiated.
+/// Build a unique room ID per call session from two user IDs.
+/// A timestamp suffix ensures a fresh room is created for every new call,
+/// preventing the second call from reusing a potentially stale room on the backend.
 String _buildRoomId(String userIdA, String userIdB) {
   final ids = [userIdA, userIdB]..sort();
-  return 'direct-${ids[0]}-${ids[1]}';
+  // Short epoch suffix (last 8 digits) makes the room unique per session
+  final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000)
+      .toString()
+      .substring(3); // e.g. "8392481"
+  return 'direct-${ids[0]}-${ids[1]}-$ts';
 }
 
 /// Shared helper: derive initials from name
@@ -170,15 +175,6 @@ void _launchDirectCall(
 
   final roomId = _buildRoomId(myUserId, recipientUserId);
 
-  // Notify callee via the persistent signaling socket
-  context.read<SignalingService>().sendCallInvite(
-        calleeUserId: recipientUserId,
-        roomId: roomId,
-        isVideoCall: isVideo,
-        callerName: myName,
-        callerMatricule: myMatricule,
-      );
-
   // Save outgoing call log
   final log = CallLog(
     id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -193,6 +189,9 @@ void _launchDirectCall(
   );
   context.read<CallsController>().addCallLog(log);
 
+  // Navigate to call page FIRST so our call socket connects and joins the room,
+  // then send the invite after a brief moment so the callee only arrives once
+  // we are already in the room and ready to negotiate.
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => CallPage(
@@ -204,6 +203,18 @@ void _launchDirectCall(
       ),
     ),
   );
+
+  // Notify callee via the persistent signaling socket AFTER navigation.
+  // A small delay gives our WebRTC socket time to connect and join the room.
+  Future.delayed(const Duration(milliseconds: 800), () {
+    context.read<SignalingService>().sendCallInvite(
+      calleeUserId: recipientUserId,
+      roomId: roomId,
+      isVideoCall: isVideo,
+      callerName: myName,
+      callerMatricule: myMatricule,
+    );
+  });
 }
 
 class _GroupCallLaunchDialog extends StatefulWidget {
