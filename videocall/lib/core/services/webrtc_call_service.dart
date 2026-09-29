@@ -100,12 +100,19 @@ class WebRTCCallService extends ChangeNotifier {
   Future<void> initializeSocket(String userToken) async {
     if (_socket != null && _socket!.connected) return;
 
+    // If a leftover (disconnected) socket exists, clean it up first
+    if (_socket != null) {
+      _socket!.dispose();
+      _socket = null;
+    }
+
     _socket = io.io(
       ApiConfig.videoCallsBaseUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': userToken})
           .disableAutoConnect()
+          .disableReconnection() // Prevent auto-reconnect — each call manages its own socket lifetime
           .build(),
     );
 
@@ -115,6 +122,10 @@ class WebRTCCallService extends ChangeNotifier {
 
     _socket!.onDisconnect((_) {
       debugPrint('[WebRTC] Disconnected from Video Calls Socket.io server');
+    });
+
+    _socket!.on('connect_error', (err) {
+      debugPrint('[WebRTC] Connection error: $err');
     });
 
     _socket!.on('room:joined', (data) async {
