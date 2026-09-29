@@ -426,6 +426,13 @@ class WebRTCCallService extends ChangeNotifier {
     _currentRoomId = null;
     _safeNotify();
 
+    // Disconnect & dispose the call socket so the next call gets a clean one.
+    // This prevents a dangling socket from the previous call from interfering.
+    removeSocketListeners();
+    _socket?.disconnect();
+    _socket?.dispose();
+    _socket = null;
+
     // Reset state back to idle after delay
     Future.delayed(const Duration(seconds: 1), () {
       if (_disposed) return;
