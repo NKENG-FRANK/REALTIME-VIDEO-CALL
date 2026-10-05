@@ -13,6 +13,9 @@ import {
 export function registerVideoHandlers(io: Server, socket: Socket) {
   const userId = socket.data.userId;
 
+  // Track which rooms this socket has already left to prevent double-leave
+  const leftRooms = new Set<string>();
+
   // ─── Call Signaling ─────────────────────────────────────────────────────
 
   /**
@@ -32,16 +35,16 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       try {
         const { calleeUserId, roomId, callType, callerName, callerMatricule } = data;
         console.log(`[VideoHandler] Received call:invite from ${userId} to ${calleeUserId} (roomId: ${roomId})`);
-        const calleeSocketId = await redis.hget('video:presence', calleeUserId);
+        const isOnline = await redis.hexists('video:presence', calleeUserId);
 
-        if (!calleeSocketId) {
+        if (!isOnline) {
           console.log(`[VideoHandler] Callee ${calleeUserId} NOT found in Redis presence (callee offline)`);
           socket.emit('call:callee_offline', { calleeUserId });
           return;
         }
 
-        console.log(`[VideoHandler] Forwarding call:incoming to calleeSocketId ${calleeSocketId}`);
-        io.to(calleeSocketId).emit('call:incoming', {
+        console.log(`[VideoHandler] Forwarding call:incoming to callee user room ${calleeUserId}`);
+        io.to(calleeUserId).emit('call:incoming', {
           roomId,
           callType,
           callerUserId: userId,
@@ -63,9 +66,9 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
    */
   socket.on('call:decline', async (data: { callerUserId: string; roomId: string }) => {
     console.log(`[VideoHandler] Callee ${userId} declined call from caller ${data.callerUserId}`);
-    const callerSocketId = await redis.hget('video:presence', data.callerUserId);
-    if (callerSocketId) {
-      io.to(callerSocketId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
+    const isOnline = await redis.hexists('video:presence', data.callerUserId);
+    if (isOnline) {
+      io.to(data.callerUserId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
     }
   });
 
@@ -97,16 +100,22 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   socket.on('room:leave', async (data: { roomId: string; durationSeconds?: number }) => {
     const { roomId, durationSeconds } = data;
-    await leaveRoom(socket, io, userId, roomId, durationSeconds);
+    if (!leftRooms.has(roomId)) {
+      leftRooms.add(roomId);
+      await leaveRoom(socket, io, userId, roomId, durationSeconds);
+    }
   });
 
   socket.on('disconnect', async () => {
-    // Clean up only call rooms (not the userId presence room)
-    socket.rooms.forEach((roomId) => {
-      if (roomId !== socket.id && roomId !== userId) {
-        leaveRoom(socket, io, userId, roomId);
+    // Clean up only call rooms (not the userId presence room or socket.id room).
+    // Use a snapshot of rooms because socket.rooms will mutate during iteration.
+    const roomsSnapshot = Array.from(socket.rooms);
+    for (const roomId of roomsSnapshot) {
+      if (roomId !== socket.id && roomId !== userId && !leftRooms.has(roomId)) {
+        leftRooms.add(roomId);
+        await leaveRoom(socket, io, userId, roomId);
       }
-    });
+    }
   });
 
   // ─── WebRTC Transport ────────────────────────────────────────────────────
@@ -279,7 +288,11 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   // ─── Call End ─────────────────────────────────────────────────────────────
 
   socket.on('call:end', async (data: { roomId: string; durationSeconds: number }) => {
-    await leaveRoom(socket, io, userId, data.roomId, data.durationSeconds, 'COMPLETED');
+    const { roomId, durationSeconds } = data;
+    if (!leftRooms.has(roomId)) {
+      leftRooms.add(roomId);
+      await leaveRoom(socket, io, userId, roomId, durationSeconds, 'COMPLETED');
+    }
   });
 
   // ─── WebRTC Direct Peer-to-Peer Signaling ───────────────────────────────────
@@ -319,9 +332,15 @@ async function leaveRoom(
   removeParticipant(roomId, userId);
   socket.leave(roomId);
 
-  // Notify remaining participants in the room
-  io.to(roomId).emit('room:participant_left', { userId });
-  io.to(roomId).emit('call:ended', { roomId, endedBy: userId });
+  // Notify REMAINING participants only (not the socket that just left).
+  // Using socket.to() instead of io.to() excludes the sender's own socket,
+  // preventing the leaving socket from receiving its own call:ended and
+  // triggering endCall() again on the Flutter side.
+  const remainingParticipants = getRoomParticipants(roomId);
+  if (remainingParticipants.length > 0) {
+    socket.to(roomId).emit('room:participant_left', { userId });
+    socket.to(roomId).emit('call:ended', { roomId, endedBy: userId });
+  }
 
   // Publish to RabbitMQ for background processing
   await publishCallEvent('call.completed', {

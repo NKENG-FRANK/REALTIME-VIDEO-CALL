@@ -4,38 +4,12 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../../core/widgets/app_shell.dart';
 import '../../../contacts/domain/models/contact.dart';
 import '../../domain/models/user_settings.dart';
 import '../controllers/settings_controller.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
-/// A single setting item definition.
-class _SettingToggle {
-  final String title;
-  final String subtitle;
-  final bool value;
-
-  const _SettingToggle({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-  });
-}
-
-/// A dropdown setting definition.
-class _SettingDropdown {
-  final String title;
-  final String subtitle;
-  final String value;
-  final List<String> options;
-
-  const _SettingDropdown({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.options,
-  });
-}
 
 /// Settings page with left navigation panel and scrollable
 /// settings sections: Profile, Calling, Notifications, Appearance.
@@ -50,288 +24,128 @@ class SettingsPage extends StatelessWidget {
         children: [
           const AnimatedBackground(),
           SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isMobile = constraints.maxWidth < 760;
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.74),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: isMobile
-                      ? _buildMobileLayout(context)
-                      : _buildDesktopLayout(context),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDesktopLayout(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(width: 186, child: _buildAppSidebar(context)),
-        Expanded(child: _buildContent(context)),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout(BuildContext context) {
-    return Column(
-      children: [
-        _buildMobileHeader(),
-        Expanded(child: _buildContent(context)),
-      ],
-    );
-  }
-
-  // ── App Sidebar (shared with contacts/calls) ──
-
-  Widget _buildAppSidebar(BuildContext context) {
-    return Container(
-      color: const Color(0xFFEAF4EE).withValues(alpha: 0.84),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(15, 19, 15, 19),
-            child: Row(
-              children: [
-                _brandMark(),
-                const SizedBox(width: 9),
-                const Text(
-                  'Callwave',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          const SizedBox(height: 14),
-          _appNavItem(context, Icons.phone, AppLocalizations.of(context).navCalls, selected: false, route: '/calls'),
-          _appNavItem(context, Icons.people_alt, AppLocalizations.of(context).navContacts, selected: false, route: '/contacts'),
-          _appNavItem(context, Icons.settings, AppLocalizations.of(context).navSettings, selected: true, route: '/settings'),
-          const Spacer(),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          Padding(
-            padding: const EdgeInsets.all(13),
-            child: Consumer<AuthController>(
-              builder: (context, authController, _) {
-                final user = authController.currentUser;
-                final displayName = user != null 
-                    ? (user['display_name'] ?? user['displayName'] ?? user['username'] ?? user['matricule'] ?? 'User') 
-                    : 'User';
-                
-                final String initials;
-                if (user != null) {
-                  final parts = displayName.trim().split(' ');
-                  if (parts.isEmpty || parts.first.isEmpty) {
-                    initials = 'U';
-                  } else if (parts.length == 1) {
-                    initials = parts.first[0].toUpperCase();
-                  } else {
-                    initials = (parts.first[0] + parts.last[0]).toUpperCase();
-                  }
-                } else {
-                  initials = 'ME';
-                }
-
-                return Row(
-                  children: [
-                    _avatar(initials, AppColors.primary),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          if (user != null && user['matricule'] != null)
-                            Text(
-                              user['matricule'],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            )
-                          else
-                            const _OnlineLabel(),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
-                      tooltip: AppLocalizations.of(context).logout,
-                      onPressed: () => _confirmAndLogout(context, authController),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMobileHeader() {
-    return Container(
-      color: const Color(0xFFEAF4EE).withValues(alpha: 0.9),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-      child: Row(
-        children: [
-          _brandMark(),
-          const SizedBox(width: 9),
-          const Text(
-            'Callwave',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.menu, color: AppColors.primary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _appNavItem(BuildContext context, IconData icon, String label, {bool selected = false, String? route}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      child: InkWell(
-        onTap: route != null && !selected
-            ? () => Navigator.of(context).pushReplacementNamed(route)
-            : null,
-        borderRadius: BorderRadius.circular(9),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFCDE8D8) : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? const Color(0xFF2387C4) : AppColors.textMuted,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.74),
               ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: AppShell(
+                activePage: 'settings',
+                child: _buildContent(context),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildPageHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(26, 17, 26, 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppLocalizations.of(context).settingsTitle,
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  AppLocalizations.of(context).settingsSubtitle,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final controller = Provider.of<SettingsController>(context, listen: false);
-              final authCtrl = Provider.of<AuthController>(context, listen: false);
-              final success = await controller.saveProfileToBackend();
-              if (context.mounted) {
-                if (success) {
-                  if (authCtrl.currentUser != null) {
-                    final updatedUser = Map<String, dynamic>.from(authCtrl.currentUser!);
-                    updatedUser['display_name'] = controller.settings.displayName;
-                    updatedUser['ministry'] = controller.settings.ministry;
-                    updatedUser['department'] = controller.settings.department;
-                    updatedUser['division'] = controller.settings.division;
-                    updatedUser['position_title'] = controller.settings.positionTitle;
-                    updatedUser['office_location'] = controller.settings.officeLocation;
-                    authCtrl.updateUserData(updatedUser);
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(AppLocalizations.of(context).savedSuccessfully),
-                      duration: const Duration(seconds: 2),
-                      backgroundColor: AppColors.primary,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Failed to save changes to server'),
-                      duration: Duration(seconds: 3),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                }
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final isMobile = constraints.maxWidth < 500;
+
+        Future<void> doSave() async {
+          final controller = Provider.of<SettingsController>(context, listen: false);
+          final authCtrl = Provider.of<AuthController>(context, listen: false);
+          final success = await controller.saveProfileToBackend();
+          if (context.mounted) {
+            if (success) {
+              if (authCtrl.currentUser != null) {
+                final updatedUser = Map<String, dynamic>.from(authCtrl.currentUser!);
+                updatedUser['display_name'] = controller.settings.displayName;
+                updatedUser['ministry'] = controller.settings.ministry;
+                updatedUser['department'] = controller.settings.department;
+                updatedUser['division'] = controller.settings.division;
+                updatedUser['position_title'] = controller.settings.positionTitle;
+                updatedUser['office_location'] = controller.settings.officeLocation;
+                authCtrl.updateUserData(updatedUser);
               }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 11),
-              textStyle: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w700),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Text(AppLocalizations.of(context).saveChanges),
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(AppLocalizations.of(context).savedSuccessfully),
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: AppColors.primary,
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to save changes to server'),
+                  duration: Duration(seconds: 3),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          }
+        }
+
+        final saveButton = ElevatedButton(
+          onPressed: doSave,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-        ],
-      ),
+          child: Text(AppLocalizations.of(context).saveChanges),
+        );
+
+        return Container(
+          padding: EdgeInsets.fromLTRB(26, 17, 26, isMobile ? 12 : 16),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
+          ),
+          child: isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context).settingsTitle,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      AppLocalizations.of(context).settingsSubtitle,
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: saveButton),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppLocalizations.of(context).settingsTitle,
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            AppLocalizations.of(context).settingsSubtitle,
+                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    saveButton,
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -937,59 +751,6 @@ class SettingsPage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  // ── Shared helpers ──
-
-  Widget _brandMark() => Container(
-        width: 25,
-        height: 25,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.accent,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: const Text(
-          'C',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-            fontSize: 13,
-          ),
-        ),
-      );
-
-  Widget _avatar(String initials, Color color) => Container(
-        width: 34,
-        height: 34,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Text(
-          initials,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      );
-}
-
-class _OnlineLabel extends StatelessWidget {
-  const _OnlineLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Row(
-      children: [
-        const Text('•',
-            style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
-        const SizedBox(width: 3),
-        Text(l10n.online,
-            style: const TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
-      ],
     );
   }
 }

@@ -142,22 +142,22 @@ class _CallEndedPageState extends State<CallEndedPage>
 
   Widget _buildStatCards() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 12,
         children: [
           _StatCard(
             value: widget.duration,
             label: 'Duration',
             color: AppColors.statGreenTint,
           ),
-          const SizedBox(width: 14),
           _StatCard(
             value: '${widget.participantCount}',
             label: 'Participants',
             color: AppColors.statYellowTint,
           ),
-          const SizedBox(width: 14),
           _StatCard(
             value: widget.quality,
             label: 'Quality',

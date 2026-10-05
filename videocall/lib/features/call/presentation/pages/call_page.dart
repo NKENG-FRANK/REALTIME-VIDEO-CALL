@@ -145,25 +145,29 @@ class _CallPageState extends State<CallPage> {
             onPressed: _hangUpAndExit,
           ),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.callTitle,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.callTitle,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                'Room: ${widget.roomId} • ${_callService.callState.name}',
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
+                Text(
+                  'Room: ${widget.roomId} • ${_callService.callState.name}',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const Spacer(),
           IconButton(

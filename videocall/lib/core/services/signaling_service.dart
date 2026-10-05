@@ -49,15 +49,33 @@ class SignalingService extends ChangeNotifier {
   bool get calleeOffline => _calleeOffline;
 
   bool get isConnected => _socket?.connected == true;
+  String? _lastUserToken;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  /// Ensure the signaling socket is actively connected, restoring with stored token if needed.
+  Future<void> ensureConnected() async {
+    if (_socket != null && _socket!.connected) return;
+    final token = _lastUserToken ?? await AuthService.getToken();
+    if (token != null && token.isNotEmpty) {
+      await connect(token);
+    }
+  }
+
   /// Call this once after a successful login / auth-check, passing the JWT.
   Future<void> connect(String userToken) async {
+    _lastUserToken = userToken;
+
     // Avoid duplicate connections for the same user
     if (_socket != null && _socket!.connected) {
       debugPrint('[Signaling] Already connected, skipping.');
       return;
+    }
+
+    // Clean up any stale socket instance
+    if (_socket != null) {
+      _socket!.dispose();
+      _socket = null;
     }
 
     _socket = io.io(
@@ -65,6 +83,7 @@ class SignalingService extends ChangeNotifier {
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': userToken})
+          .enableForceNew() // Dedicated manager so other sockets don't interfere
           .disableAutoConnect()
           .enableReconnection()
           .setReconnectionDelay(2000)
@@ -79,6 +98,11 @@ class SignalingService extends ChangeNotifier {
     _socket!.onDisconnect((_) {
       debugPrint('[Signaling] Disconnected from video-calls socket');
       _safe(notifyListeners);
+      // Auto-reconnect if not explicitly disconnected/disposed
+      if (!_disposed && _socket != null && !_socket!.connected) {
+        debugPrint('[Signaling] Attempting to reconnect signaling socket...');
+        _socket!.connect();
+      }
     });
 
     // ── Incoming call from another user ─────────────────────────────────

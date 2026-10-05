@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
-import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../../core/widgets/app_shell.dart';
 import '../../../../core/services/contacts_service.dart';
 import '../controllers/contacts_controller.dart';
 import '../../../call/presentation/widgets/call_launcher_dialogs.dart';
-import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class ContactsPage extends StatefulWidget {
   const ContactsPage({Key? key}) : super(key: key);
@@ -42,219 +41,18 @@ class _ContactsPageState extends State<ContactsPage> {
         children: [
           const AnimatedBackground(),
           SafeArea(
-            child: Row(
-              children: [
-                _buildSidebar(context),
-                Expanded(child: _buildContent()),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidebar(BuildContext context) {
-    return Container(
-      width: 220,
-      decoration: const BoxDecoration(
-        color: Color(0xFFEAF4EE),
-        border: Border(right: BorderSide(color: Color(0xFFDCE7DF))),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(15, 19, 15, 19),
-            child: Row(
-              children: [
-                Container(
-                  width: 25,
-                  height: 25,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: const Text(
-                    'C',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 9),
-                const Text(
-                  'Callwave',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          const SizedBox(height: 14),
-          _navItem(Icons.phone, 'Calls', false, () {
-            Navigator.of(context).pushReplacementNamed('/calls');
-          }),
-          _navItem(Icons.people_alt, 'Contacts', true, () {}),
-          _navItem(Icons.settings, 'Settings', false, () {
-            Navigator.of(context).pushReplacementNamed('/settings');
-          }),
-          const Spacer(),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          Padding(
-            padding: const EdgeInsets.all(13),
-            child: Consumer<AuthController>(
-              builder: (context, authController, _) {
-                final user = authController.currentUser;
-                
-                final displayName = user != null 
-                    ? (user['display_name'] ?? user['displayName'] ?? user['username'] ?? user['matricule'] ?? 'User') 
-                    : 'User';
-                    
-                final String initials;
-                if (user != null) {
-                  final parts = displayName.trim().split(' ');
-                  if (parts.isEmpty || parts.first.isEmpty) {
-                    initials = 'U';
-                  } else if (parts.length == 1) {
-                    initials = parts.first[0].toUpperCase();
-                  } else {
-                    initials = (parts.first[0] + parts.last[0]).toUpperCase();
-                  }
-                } else {
-                  initials = 'ME';
-                }
-
-                return Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        initials,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          if (user != null && user['matricule'] != null)
-                            Text(
-                              user['matricule'],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            )
-                          else
-                            const Text('Online', style: TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
-                      tooltip: AppLocalizations.of(context).logout,
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: Text(AppLocalizations.of(context).logoutConfirmTitle),
-                            content: Text(AppLocalizations.of(context).logoutConfirmMessage),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: Text(AppLocalizations.of(context).cancel),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.redAccent,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: Text(AppLocalizations.of(context).logout),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirmed == true && context.mounted) {
-                          authController.signOut();
-                          Navigator.of(context).pushNamedAndRemoveUntil('/auth', (route) => false);
-                        }
-                      },
-                    ),
-                  ],
-                );
-              }
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(IconData icon, String label, bool selected, VoidCallback onTap) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.6) : Colors.transparent,
-            border: Border(
-              left: BorderSide(
-                color: selected ? AppColors.primary : Colors.transparent,
-                width: 3,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.74),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: AppShell(
+                activePage: 'contacts',
+                child: _buildContent(),
               ),
             ),
           ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textMuted),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.textMuted,
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -296,42 +94,54 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   Widget _buildPageHeader(ContactsController controller) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(26, 17, 26, 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Contacts & Directory',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Select any user or contact to launch a direct audio/video call',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 11),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(26, 17, 26, 16),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
           ),
-          SmoothActionButton(
-            icon: Icons.refresh,
-            label: 'Refresh',
-            backgroundColor: Colors.white,
-            foregroundColor: AppColors.primary,
-            onPressed: () => controller.refreshData(),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Contacts & Directory',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    if (!isMobile)
+                      const Text(
+                        'Select any user or contact to launch a direct audio/video call',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+              if (isMobile)
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: AppColors.primary),
+                  onPressed: () => controller.refreshData(),
+                )
+              else
+                SmoothActionButton(
+                  icon: Icons.refresh,
+                  label: 'Refresh',
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primary,
+                  onPressed: () => controller.refreshData(),
+                ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -341,11 +151,11 @@ class _ContactsPageState extends State<ContactsPage> {
       onChanged: (val) => controller.setSearchQuery(val),
       style: const TextStyle(fontSize: 11, color: AppColors.textPrimary),
       decoration: InputDecoration(
-        hintText: 'Search by name or matricule (e.g. A123456789)...',
+        hintText: 'Search by name or matricule...',
         hintStyle: const TextStyle(fontSize: 11, color: AppColors.textMuted),
         prefixIcon: const Icon(Icons.search, size: 17, color: AppColors.textMuted),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.75),
+        fillColor: Colors.white.withOpacity(0.75),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE0EAE2)),
@@ -374,7 +184,7 @@ class _ContactsPageState extends State<ContactsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white.withValues(alpha: 0.6),
+          color: isSelected ? AppColors.primary : Colors.white.withOpacity(0.6),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -399,7 +209,7 @@ class _ContactsPageState extends State<ContactsPage> {
     if (list.isEmpty) {
       return Container(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.82),
+          color: Colors.white.withOpacity(0.82),
           borderRadius: BorderRadius.circular(13),
         ),
         padding: const EdgeInsets.all(40),
@@ -409,31 +219,43 @@ class _ContactsPageState extends State<ContactsPage> {
               ? 'No saved contacts found. Switch to "All Users" to search and add contacts.'
               : 'No users found matching "${controller.searchQuery}"',
           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          textAlign: TextAlign.center,
         ),
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(13),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 20,
-            offset: Offset(0, 9),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.82),
+            borderRadius: BorderRadius.circular(13),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x10000000),
+                blurRadius: 20,
+                offset: Offset(0, 9),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ListView.separated(
-        itemCount: list.length + 1,
-        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE1EAE3)),
-        itemBuilder: (context, index) {
-          if (index == 0) return _tableHeader();
-          final item = list[index - 1];
-          return _contactRow(item, controller);
-        },
-      ),
+          child: ListView.separated(
+            itemCount: isMobile ? list.length : list.length + 1,
+            separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE1EAE3)),
+            itemBuilder: (context, index) {
+              if (!isMobile) {
+                if (index == 0) return _tableHeader();
+                final item = list[index - 1];
+                return _contactRowDesktop(item, controller);
+              } else {
+                final item = list[index];
+                return _contactRowMobile(item, controller);
+              }
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -455,11 +277,11 @@ class _ContactsPageState extends State<ContactsPage> {
     );
   }
 
-  Widget _contactRow(ContactItem item, ContactsController controller) {
+  Widget _contactRowDesktop(ContactItem item, ContactsController controller) {
     return SmoothHoverCard(
       onTap: () => _launchCall(context, item),
       normalColor: Colors.transparent,
-      hoverColor: Colors.white.withValues(alpha: 0.7),
+      hoverColor: Colors.white.withOpacity(0.7),
       borderRadius: 0,
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       child: Row(
@@ -535,11 +357,74 @@ class _ContactsPageState extends State<ContactsPage> {
     );
   }
 
+  Widget _contactRowMobile(ContactItem item, ContactsController controller) {
+    return SmoothHoverCard(
+      onTap: () => _launchCall(context, item),
+      normalColor: Colors.transparent,
+      hoverColor: Colors.white.withOpacity(0.7),
+      borderRadius: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          _avatar(item.displayName),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.displayName,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      item.matricule,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted),
+                    ),
+                    if (item.department != null && item.department!.isNotEmpty) ...[
+                      const Text(' • ', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                      Flexible(
+                        child: Text(
+                          item.department!,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                        ),
+                      ),
+                    ]
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (controller.selectedTab == 'All Users')
+            IconButton(
+              icon: const Icon(Icons.person_add_alt_1, size: 20, color: AppColors.primary),
+              onPressed: () async {
+                final ok = await controller.saveContact(item);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(ok ? 'Contact saved!' : 'Failed to save contact')),
+                  );
+                }
+              },
+            ),
+          IconButton(
+            icon: const Icon(Icons.call, size: 20, color: AppColors.accent),
+            onPressed: () => _launchCall(context, item),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _avatar(String name) {
     final initials = name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
     return Container(
-      width: 28,
-      height: 28,
+      width: 40,
+      height: 40,
       alignment: Alignment.center,
       decoration: const BoxDecoration(
         color: AppColors.primary,
@@ -547,7 +432,7 @@ class _ContactsPageState extends State<ContactsPage> {
       ),
       child: Text(
         initials.isNotEmpty ? initials : 'U',
-        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800),
       ),
     );
   }
