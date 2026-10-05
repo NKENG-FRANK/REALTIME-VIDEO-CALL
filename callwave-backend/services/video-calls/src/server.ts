@@ -52,19 +52,16 @@ io.on('connection', async (socket) => {
   // Join a room specific to this user to track all their sockets
   socket.join(userId);
 
-  // Track presence in Redis
-  await redis.hset('video:presence', userId, socket.id);
+  // Track presence in Redis (Set of sockets + hash lookup)
+  await redis.sadd(`video:presence:${userId}`, socket.id);
+  await redis.hset('video:presence', userId, 'online');
 
   socket.on('disconnect', async () => {
-    const current = await redis.hget('video:presence', userId);
-    if (current === socket.id) {
-      const sockets = await io.in(userId).fetchSockets();
-      if (sockets.length > 0) {
-        // Another socket for this user is still connected, assign presence to it
-        await redis.hset('video:presence', userId, sockets[0].id);
-      } else {
-        await redis.hdel('video:presence', userId);
-      }
+    console.log(`Video socket disconnected: ${socket.id}, User: ${userId}`);
+    await redis.srem(`video:presence:${userId}`, socket.id);
+    const remaining = await redis.scard(`video:presence:${userId}`);
+    if (remaining === 0) {
+      await redis.hdel('video:presence', userId);
     }
   });
 

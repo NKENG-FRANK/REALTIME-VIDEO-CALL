@@ -111,6 +111,7 @@ class WebRTCCallService extends ChangeNotifier {
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': userToken})
+          .enableForceNew() // Dedicated manager so disposing this call socket doesn't kill SignalingService
           .disableAutoConnect()
           .disableReconnection() // Prevent auto-reconnect — each call manages its own socket lifetime
           .build(),
@@ -201,11 +202,34 @@ class WebRTCCallService extends ChangeNotifier {
     });
 
     _socket!.on('call:ended', (data) {
+      String? eventRoomId;
+      if (data is Map) {
+        eventRoomId = data['roomId'] as String?;
+      } else if (data is List && data.isNotEmpty && data.first is Map) {
+        eventRoomId = data.first['roomId'] as String?;
+      }
+
+      // Ignore stale call:ended events for rooms we are no longer in
+      if (eventRoomId != null && eventRoomId != _currentRoomId) {
+        debugPrint('[WebRTC] Ignoring stale call:ended for room $eventRoomId (current: $_currentRoomId)');
+        return;
+      }
       debugPrint('[WebRTC] Call ended by server/peer: $data');
       endCall();
     });
 
     _socket!.on('room:participant_left', (data) {
+      String? eventRoomId;
+      if (data is Map) {
+        eventRoomId = data['roomId'] as String?;
+      } else if (data is List && data.isNotEmpty && data.first is Map) {
+        eventRoomId = data.first['roomId'] as String?;
+      }
+
+      if (eventRoomId != null && eventRoomId != _currentRoomId) {
+        debugPrint('[WebRTC] Ignoring stale room:participant_left for room $eventRoomId');
+        return;
+      }
       debugPrint('[WebRTC] Participant left: $data');
       endCall();
     });
@@ -407,6 +431,12 @@ class WebRTCCallService extends ChangeNotifier {
     _callState = CallState.ended;
     _isFirstPeer = false;
 
+    // 1. Detach renderers FIRST so native sink unregisters before streams are killed
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
+    await Future.delayed(const Duration(milliseconds: 60));
+
+    // 2. Close peer connection
     try {
       await _peerConnection?.close();
       await _peerConnection?.dispose();
@@ -416,29 +446,37 @@ class WebRTCCallService extends ChangeNotifier {
     _peerConnection = null;
     _pendingCandidates.clear();
 
-    try {
-      _localStream?.getTracks().forEach((track) => track.stop());
-      await _localStream?.dispose();
-    } catch (e) {
-      debugPrint('[WebRTC] Error disposing local stream: $e');
+    // 3. Stop and dispose local media stream
+    if (_localStream != null) {
+      try {
+        for (final track in _localStream!.getTracks()) {
+          await track.stop();
+        }
+        await _localStream!.dispose();
+      } catch (e) {
+        debugPrint('[WebRTC] Error disposing local stream: $e');
+      }
+      _localStream = null;
     }
-    _localStream = null;
-    localRenderer.srcObject = null;
 
-    try {
-      _remoteStream?.getTracks().forEach((track) => track.stop());
-      await _remoteStream?.dispose();
-    } catch (e) {
-      debugPrint('[WebRTC] Error disposing remote stream: $e');
+    // 4. Safely release remote stream
+    if (_remoteStream != null) {
+      try {
+        for (final track in _remoteStream!.getTracks()) {
+          await track.stop();
+        }
+        await _remoteStream!.dispose();
+      } catch (e) {
+        debugPrint('[WebRTC] Remote stream cleanup: $e');
+      }
+      _remoteStream = null;
     }
-    _remoteStream = null;
-    remoteRenderer.srcObject = null;
 
     _currentRoomId = null;
     _safeNotify();
 
     // Disconnect & dispose the call socket so the next call gets a clean one.
-    // This prevents a dangling socket from the previous call from interfering.
+    // Thanks to enableForceNew(), this will NOT disconnect SignalingService!
     removeSocketListeners();
     _socket?.disconnect();
     _socket?.dispose();
@@ -457,11 +495,43 @@ class WebRTCCallService extends ChangeNotifier {
     _disposed = true;
     removeSocketListeners();
     _pendingCandidates.clear();
+
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
+
     _peerConnection?.close();
     _peerConnection?.dispose();
+    _peerConnection = null;
+
+    if (_localStream != null) {
+      try {
+        for (final track in _localStream!.getTracks()) {
+          track.stop();
+        }
+        _localStream!.dispose();
+      } catch (e) {
+        debugPrint('[WebRTC] Error disposing local stream during teardown: $e');
+      }
+      _localStream = null;
+    }
+
+    if (_remoteStream != null) {
+      try {
+        for (final track in _remoteStream!.getTracks()) {
+          track.stop();
+        }
+        _remoteStream!.dispose();
+      } catch (e) {
+        debugPrint('[WebRTC] Error disposing remote stream during teardown: $e');
+      }
+      _remoteStream = null;
+    }
+
     localRenderer.dispose();
     remoteRenderer.dispose();
+    _socket?.disconnect();
     _socket?.dispose();
+    _socket = null;
     super.dispose();
   }
 

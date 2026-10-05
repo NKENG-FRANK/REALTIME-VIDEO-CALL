@@ -8,11 +8,10 @@ const router = Router();
 router.get('/status/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const socketId = await redis.hget('video:presence', userId);
+    const isOnline = await redis.hexists('video:presence', userId);
     res.json({
       userId,
-      isOnline: !!socketId,
-      socketId: socketId || null,
+      isOnline: !!isOnline,
     });
   } catch {
     res.status(500).json({ error: 'Failed to fetch status' });

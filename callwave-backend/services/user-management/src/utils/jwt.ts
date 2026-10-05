@@ -8,9 +8,9 @@ export interface JwtPayload {
 }
 
 export function generateAccessToken(payload: JwtPayload): string {
-  // Access token valid for 15 minutes by default
+  // Access token valid for 7 days in development
   const secret = (config.app as any).jwtSecret || 'dev-secret-key-change-in-prod';
-  return jwt.sign(payload, secret, { expiresIn: '15m' });
+  return jwt.sign(payload, secret, { expiresIn: '7d' });
 }
 
 export function generateRefreshToken(): string {

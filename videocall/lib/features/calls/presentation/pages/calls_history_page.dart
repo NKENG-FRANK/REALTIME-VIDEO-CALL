@@ -4,10 +4,11 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../../core/widgets/app_shell.dart';
 import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
 import '../../domain/models/call_log.dart';
+import '../../../../core/services/signaling_service.dart';
 import '../controllers/calls_controller.dart';
-import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class CallsHistoryPage extends StatefulWidget {
   const CallsHistoryPage({Key? key}) : super(key: key);
@@ -18,6 +19,16 @@ class CallsHistoryPage extends StatefulWidget {
 
 class _CallsHistoryPageState extends State<CallsHistoryPage> {
   final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<SignalingService>().ensureConnected();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -33,233 +44,18 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
         children: [
           const AnimatedBackground(),
           SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isMobile = constraints.maxWidth < 760;
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.74),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: isMobile
-                      ? _buildMobileLayout()
-                      : _buildDesktopLayout(),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDesktopLayout() {
-    return Row(
-      children: [
-        SizedBox(width: 186, child: _buildSidebar('Calls')),
-        Expanded(child: _buildContent()),
-      ],
-    );
-  }
-
-  Widget _buildMobileLayout() {
-    return Column(
-      children: [
-        _buildMobileHeader(),
-        Expanded(child: _buildContent()),
-      ],
-    );
-  }
-
-  // ── Sidebar (shared structure with contacts) ──
-
-  Widget _buildSidebar(String activePage) {
-    return Container(
-      color: const Color(0xFFEAF4EE).withValues(alpha: 0.84),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(15, 19, 15, 19),
-            child: Row(
-              children: [
-                _brandMark(),
-                const SizedBox(width: 9),
-                const Text(
-                  'Callwave',
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          const SizedBox(height: 14),
-          _navItem(Icons.phone, AppLocalizations.of(context).navCalls, selected: true, route: '/calls'),
-          _navItem(Icons.people_alt, AppLocalizations.of(context).navContacts, route: '/contacts'),
-          _navItem(Icons.settings, AppLocalizations.of(context).navSettings, route: '/settings'),
-          const Spacer(),
-          const Divider(height: 1, color: Color(0xFFD7E5DB)),
-          Padding(
-            padding: const EdgeInsets.all(13),
-            child: Consumer<AuthController>(
-              builder: (context, authController, _) {
-                final user = authController.currentUser;
-                final displayName = user != null 
-                    ? (user['display_name'] ?? user['displayName'] ?? user['username'] ?? user['matricule'] ?? 'User') 
-                    : 'User';
-                
-                final String initials;
-                if (user != null) {
-                  final parts = displayName.trim().split(' ');
-                  if (parts.isEmpty || parts.first.isEmpty) {
-                    initials = 'U';
-                  } else if (parts.length == 1) {
-                    initials = parts.first[0].toUpperCase();
-                  } else {
-                    initials = (parts.first[0] + parts.last[0]).toUpperCase();
-                  }
-                } else {
-                  initials = 'ME';
-                }
-
-                return Row(
-                  children: [
-                    _avatar(initials, AppColors.primary),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          if (user != null && user['matricule'] != null)
-                            Text(
-                              user['matricule'],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            )
-                          else
-                            const _OnlineLabel(),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
-                      tooltip: AppLocalizations.of(context).logout,
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: Text(AppLocalizations.of(context).logoutConfirmTitle),
-                            content: Text(AppLocalizations.of(context).logoutConfirmMessage),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: Text(AppLocalizations.of(context).cancel),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.redAccent,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: Text(AppLocalizations.of(context).logout),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirmed == true && context.mounted) {
-                          authController.signOut();
-                          Navigator.of(context).pushNamedAndRemoveUntil('/auth', (route) => false);
-                        }
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMobileHeader() {
-    return Container(
-      color: const Color(0xFFEAF4EE).withValues(alpha: 0.9),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-      child: Row(
-        children: [
-          _brandMark(),
-          const SizedBox(width: 9),
-          const Text(
-            'Callwave',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.menu, color: AppColors.primary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(IconData icon, String label, {bool selected = false, String? route}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      child: InkWell(
-        onTap: route != null && !selected
-            ? () => Navigator.of(context).pushReplacementNamed(route)
-            : null,
-        borderRadius: BorderRadius.circular(9),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFCDE8D8) : Colors.transparent,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? const Color(0xFF2387C4) : AppColors.textMuted,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.74),
               ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
+              clipBehavior: Clip.antiAlias,
+              child: AppShell(
+                activePage: 'calls',
+                child: _buildContent(),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -294,50 +90,69 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
   }
 
   Widget _buildPageHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(26, 17, 26, 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppLocalizations.of(context).callsTitle,
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(26, 17, 26, 16),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLocalizations.of(context).callsTitle,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      AppLocalizations.of(context).callsSubtitle,
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  AppLocalizations.of(context).callsSubtitle,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+              ),
+              if (isMobile) ...[
+                IconButton(
+                  icon: const Icon(Icons.groups_rounded, color: AppColors.primary),
+                  style: IconButton.styleFrom(backgroundColor: AppColors.primary.withOpacity(0.1)),
+                  onPressed: () => showGroupCallLaunchDialog(context),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.primary),
+                  style: IconButton.styleFrom(backgroundColor: AppColors.accent),
+                  onPressed: () => showOneToOneCallLaunchDialog(context),
+                ),
+              ] else ...[
+                SmoothActionButton(
+                  icon: Icons.groups_rounded,
+                  label: AppLocalizations.of(context).startGroupCall,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  onPressed: () => showGroupCallLaunchDialog(context),
+                ),
+                const SizedBox(width: 9),
+                SmoothActionButton(
+                  icon: Icons.person_add_alt_1_rounded,
+                  label: AppLocalizations.of(context).oneToOneCall,
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: AppColors.primary,
+                  onPressed: () => showOneToOneCallLaunchDialog(context),
                 ),
               ],
-            ),
+            ],
           ),
-          SmoothActionButton(
-            icon: Icons.groups_rounded,
-            label: AppLocalizations.of(context).startGroupCall,
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            onPressed: () => showGroupCallLaunchDialog(context),
-          ),
-          const SizedBox(width: 9),
-          SmoothActionButton(
-            icon: Icons.person_add_alt_1_rounded,
-            label: AppLocalizations.of(context).oneToOneCall,
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.primary,
-            onPressed: () => showOneToOneCallLaunchDialog(context),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -358,7 +173,7 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
           color: AppColors.textMuted,
         ),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.75),
+        fillColor: Colors.white.withOpacity(0.75),
         contentPadding: const EdgeInsets.symmetric(vertical: 0),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -478,10 +293,10 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
         }
       },
       normalColor: call.isMissed
-          ? const Color(0xFFFDE8E8).withValues(alpha: 0.45)
+          ? const Color(0xFFFDE8E8).withOpacity(0.45)
           : Colors.transparent,
       hoverColor: call.isMissed
-          ? const Color(0xFFFCDADA).withValues(alpha: 0.65)
+          ? const Color(0xFFFCDADA).withOpacity(0.65)
           : Colors.white.withOpacity(0.7),
       borderRadius: 8,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -500,12 +315,15 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      call.name,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                    Flexible(
+                      child: Text(
+                        call.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                     if (call.isGroup) ...[
@@ -594,7 +412,7 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
                   '—',
                   style: TextStyle(
                     fontSize: 14,
-                    color: AppColors.callDecline.withValues(alpha: 0.5),
+                    color: AppColors.callDecline.withOpacity(0.5),
                   ),
                 ),
               PopupMenuButton<String>(
@@ -618,26 +436,6 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
     );
   }
 
-  // ── Shared helpers ──
-
-  Widget _brandMark() => Container(
-        width: 25,
-        height: 25,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.accent,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: const Text(
-          'C',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-            fontSize: 13,
-          ),
-        ),
-      );
-
   Widget _avatar(String initials, Color color) => Container(
         width: 38,
         height: 38,
@@ -652,21 +450,4 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
           ),
         ),
       );
-}
-
-class _OnlineLabel extends StatelessWidget {
-  const _OnlineLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Text('•',
-            style: TextStyle(color: Color(0xFF4DBB55), fontSize: 13)),
-        const SizedBox(width: 3),
-        Text(AppLocalizations.of(context).online,
-            style: const TextStyle(color: Color(0xFF4DBB55), fontSize: 9)),
-      ],
-    );
-  }
 }

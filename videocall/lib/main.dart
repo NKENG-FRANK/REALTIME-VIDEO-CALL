@@ -139,7 +139,9 @@ class _GlobalIncomingCallListenerState
     final signaling = context.watch<SignalingService>();
     final incoming = signaling.incomingCall;
 
-    if (incoming != null && !_showingIncomingCall) {
+    if (incoming == null) {
+      _showingIncomingCall = false;
+    } else if (!_showingIncomingCall) {
       _showingIncomingCall = true;
       // Push after the current frame so we don't call setState/Navigator
       // during a build cycle.
