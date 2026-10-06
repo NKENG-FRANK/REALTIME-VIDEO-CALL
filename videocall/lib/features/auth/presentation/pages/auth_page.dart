@@ -203,12 +203,19 @@ class AuthPage extends StatelessWidget {
     BuildContext context,
     AuthController authController,
   ) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Proportional banner panel on mobile devices
+    final panelHeight = screenHeight < 700 ? 190.0 : 230.0;
+    // Reduce horizontal padding on narrow screens
+    final hPadding = screenWidth < 380 ? 20.0 : 28.0;
+
     return SingleChildScrollView(
       child: Column(
         children: [
           // Welcome panel
           SizedBox(
-            height: 300,
+            height: panelHeight,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 500),
               transitionBuilder: _slideTransition,
@@ -222,7 +229,7 @@ class AuthPage extends StatelessWidget {
 
           // Form
           Padding(
-            padding: const EdgeInsets.all(40),
+            padding: EdgeInsets.fromLTRB(hPadding, 24, hPadding, 32),
             child: SizedBox(
               width: double.infinity,
               child: AnimatedSwitcher(

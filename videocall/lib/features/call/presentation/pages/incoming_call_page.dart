@@ -10,6 +10,8 @@ class IncomingCallPage extends StatefulWidget {
   final String callerInitials;
   final Color callerColor;
   final bool isVideoCall;
+  final bool isGroupCall;
+  final String? groupTitle;
   final String roomId;
   final VoidCallback? onAccept;
   final VoidCallback? onDecline;
@@ -22,6 +24,8 @@ class IncomingCallPage extends StatefulWidget {
     this.callerInitials = '',
     this.callerColor = const Color(0xFF8752F4),
     this.isVideoCall = true,
+    this.isGroupCall = false,
+    this.groupTitle,
     this.onAccept,
     this.onDecline,
   }) : super(key: key);
@@ -70,9 +74,13 @@ class _IncomingCallPageState extends State<IncomingCallPage>
               const SizedBox(height: 18),
               // Call type label
               Text(
-                widget.isVideoCall
-                    ? 'INCOMING VIDEO CALL'
-                    : 'INCOMING AUDIO CALL',
+                widget.isGroupCall
+                    ? (widget.isVideoCall
+                        ? 'INCOMING GROUP VIDEO CALL'
+                        : 'INCOMING GROUP AUDIO CALL')
+                    : (widget.isVideoCall
+                        ? 'INCOMING VIDEO CALL'
+                        : 'INCOMING AUDIO CALL'),
                 style: TextStyle(
                   color: AppColors.primary.withOpacity(0.55),
                   fontSize: 10,
@@ -197,9 +205,13 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                       width: 2,
                     ),
                   ),
-                  child: const Icon(
-                    Icons.videocam,
-                    size: 12,
+                  child: Icon(
+                    widget.isGroupCall
+                        ? Icons.groups_rounded
+                        : (widget.isVideoCall
+                            ? Icons.videocam
+                            : Icons.phone),
+                    size: 13,
                     color: Colors.white,
                   ),
                 ),

@@ -64,16 +64,16 @@ class _CallEndedPageState extends State<CallEndedPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.callBackground,
-      body: Center(
+      body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: SlideTransition(
             position: _slideAnimation,
             child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 32),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 60),
                   // Phone icon
                   _buildPhoneIcon(),
                   const SizedBox(height: 20),
@@ -94,6 +94,7 @@ class _CallEndedPageState extends State<CallEndedPage>
                       color: AppColors.textMuted.withOpacity(0.8),
                       fontSize: 12,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 30),
                   // Stat cards
@@ -113,8 +114,8 @@ class _CallEndedPageState extends State<CallEndedPage>
                   _buildStarRating(),
                   const SizedBox(height: 32),
                   // Action buttons
-                  _buildActionButtons(),
-                  const SizedBox(height: 60),
+                  _buildActionButtons(context),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -141,30 +142,39 @@ class _CallEndedPageState extends State<CallEndedPage>
   }
 
   Widget _buildStatCards() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          _StatCard(
-            value: widget.duration,
-            label: 'Duration',
-            color: AppColors.statGreenTint,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // On very narrow screens fit all 3 cards side by side within available width
+        final cardWidth = ((constraints.maxWidth - 40 - 24) / 3).clamp(80.0, 130.0);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _StatCard(
+                value: widget.duration,
+                label: 'Duration',
+                color: AppColors.statGreenTint,
+                width: cardWidth,
+              ),
+              _StatCard(
+                value: '${widget.participantCount}',
+                label: 'Participants',
+                color: AppColors.statYellowTint,
+                width: cardWidth,
+              ),
+              _StatCard(
+                value: widget.quality,
+                label: 'Quality',
+                color: AppColors.statNeutralTint,
+                width: cardWidth,
+              ),
+            ],
           ),
-          _StatCard(
-            value: '${widget.participantCount}',
-            label: 'Participants',
-            color: AppColors.statYellowTint,
-          ),
-          _StatCard(
-            value: widget.quality,
-            label: 'Quality',
-            color: AppColors.statNeutralTint,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -200,18 +210,45 @@ class _CallEndedPageState extends State<CallEndedPage>
     );
   }
 
-  Widget _buildActionButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildActionButtons(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrow = screenWidth < 380;
+
+    if (isNarrow) {
+      // Stack buttons vertically on very small phones
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ActionButton(
+              label: 'Call again',
+              filled: true,
+              fullWidth: true,
+              onTap: widget.onCallAgain ?? () {},
+            ),
+            const SizedBox(height: 10),
+            _ActionButton(
+              label: 'Back to home',
+              filled: false,
+              fullWidth: true,
+              onTap: widget.onBackToHome ?? () {},
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 14,
+      runSpacing: 10,
       children: [
-        // Call again
         _ActionButton(
           label: 'Call again',
           filled: true,
           onTap: widget.onCallAgain ?? () {},
         ),
-        const SizedBox(width: 14),
-        // Back to home
         _ActionButton(
           label: 'Back to home',
           filled: false,
@@ -226,18 +263,20 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
+  final double width;
 
   const _StatCard({
     required this.value,
     required this.label,
     required this.color,
+    this.width = 110,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 110,
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+      width: width,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: BoxDecoration(
         color: color.withOpacity(0.6),
         borderRadius: BorderRadius.circular(14),
@@ -251,9 +290,11 @@ class _StatCard extends StatelessWidget {
             value,
             style: const TextStyle(
               color: AppColors.textPrimary,
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
@@ -263,6 +304,7 @@ class _StatCard extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -273,12 +315,14 @@ class _StatCard extends StatelessWidget {
 class _ActionButton extends StatefulWidget {
   final String label;
   final bool filled;
+  final bool fullWidth;
   final VoidCallback onTap;
 
   const _ActionButton({
     required this.label,
     required this.filled,
     required this.onTap,
+    this.fullWidth = false,
   });
 
   @override
@@ -290,11 +334,12 @@ class _ActionButtonState extends State<_ActionButton> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
+    final button = MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
+        width: widget.fullWidth ? double.infinity : null,
         child: ElevatedButton(
           onPressed: widget.onTap,
           style: ElevatedButton.styleFrom(
@@ -323,5 +368,6 @@ class _ActionButtonState extends State<_ActionButton> {
         ),
       ),
     );
+    return button;
   }
 }
