@@ -14,6 +14,8 @@ class CallPage extends StatefulWidget {
   final String? userToken;
   final int participantCount;
   final bool isVideoCall;
+  final bool isGroupCall;
+  final WebRTCCallService? callService;
 
   const CallPage({
     Key? key,
@@ -22,6 +24,8 @@ class CallPage extends StatefulWidget {
     this.userToken,
     this.participantCount = 2,
     this.isVideoCall = true,
+    this.isGroupCall = false,
+    this.callService,
   }) : super(key: key);
 
   @override
@@ -35,9 +39,11 @@ class _CallPageState extends State<CallPage> {
   @override
   void initState() {
     super.initState();
-    _callService = WebRTCCallService();
+    _callService = widget.callService ?? WebRTCCallService();
     _callService.addListener(_onCallStateChanged);
-    _initializeCall();
+    if (widget.callService == null) {
+      _initializeCall();
+    }
   }
 
   Future<void> _initializeCall() async {
@@ -51,7 +57,11 @@ class _CallPageState extends State<CallPage> {
       debugPrint('[CallPage] No auth token found — cannot connect WebRTC socket');
     }
 
-    await _callService.joinCallRoom(widget.roomId, isVideoCall: widget.isVideoCall);
+    await _callService.joinCallRoom(
+      widget.roomId,
+      isVideoCall: widget.isVideoCall,
+      isGroupCall: widget.isGroupCall,
+    );
   }
 
   void _navigateToEndedPage() {
@@ -156,26 +166,27 @@ class _CallPageState extends State<CallPage> {
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Room: ${widget.roomId} • ${_callService.callState.name}',
+                  'Room: ${_formatRoomId(widget.roomId)} • ${_callService.callState.name}',
                   style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: 12,
                   ),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          const Spacer(),
           IconButton(
             icon: const Icon(Icons.cameraswitch),
             tooltip: 'Switch Camera',
             onPressed: () => _callService.switchCamera(),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           const SignalIndicator(strength: 3, showLabel: true),
         ],
       ),
@@ -208,35 +219,208 @@ class _CallPageState extends State<CallPage> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
-            'PARTICIPANTS (2)',
-            style: TextStyle(
+            'PARTICIPANTS (${widget.participantCount})',
+            style: const TextStyle(
               color: AppColors.textMuted,
               fontSize: 10,
               fontWeight: FontWeight.w900,
             ),
           ),
-          SizedBox(height: 14),
-          ParticipantCard(
+          const SizedBox(height: 14),
+          const ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
             avatarColor: AppColors.primary,
             signalStrength: 3,
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           ParticipantCard(
-            name: 'Remote Peer',
-            initials: 'RP',
-            avatarColor: Color(0xFF10A47D),
+            name: widget.isGroupCall ? 'Member 1' : 'Remote Peer',
+            initials: widget.isGroupCall ? 'M1' : 'RP',
+            avatarColor: const Color(0xFF10A47D),
             signalStrength: 3,
           ),
+          if (widget.isGroupCall && widget.participantCount > 2) ...[
+            for (int i = 2; i < widget.participantCount; i++) ...[
+              const SizedBox(height: 10),
+              ParticipantCard(
+                name: 'Member $i',
+                initials: 'M$i',
+                avatarColor: const Color(0xFF8752F4),
+                signalStrength: 3,
+              ),
+            ],
+          ],
         ],
       ),
     );
   }
 
   Widget _buildMainVideoArea() {
+    if (widget.isGroupCall || _callService.remoteRenderers.length > 1) {
+      return _buildGroupVideoGrid();
+    }
+    return _buildOneOnOneVideoArea();
+  }
+
+  Widget _buildGroupVideoGrid() {
+    final remoteEntries = _callService.remoteRenderers.entries.toList();
+    final totalParticipants = 1 + remoteEntries.length; // Local user + remote peers
+
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.all(12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          int crossAxisCount = 1;
+          if (totalParticipants == 2) {
+            crossAxisCount = constraints.maxWidth > 600 ? 2 : 1;
+          } else if (totalParticipants <= 4) {
+            crossAxisCount = 2;
+          } else if (totalParticipants <= 9) {
+            crossAxisCount = 3;
+          } else {
+            crossAxisCount = 4;
+          }
+
+          return GridView.builder(
+            itemCount: totalParticipants,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: constraints.maxWidth > 600 ? 1.33 : 1.0,
+            ),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                // Tile 0: Local User Video Stream
+                return _buildVideoTile(
+                  title: 'You (Local)',
+                  isLocal: true,
+                  renderer: _callService.localRenderer,
+                  isMuted: _callService.isMicMuted,
+                  isVideoOff: _callService.isVideoOff,
+                );
+              }
+
+              // Tiles 1..N: Remote Peer Video Streams
+              final peerEntry = remoteEntries[index - 1];
+              final peerId = peerEntry.key;
+              final peerRenderer = peerEntry.value;
+              final shortPeerId = peerId.length > 8 ? peerId.substring(0, 8) : peerId;
+
+              return _buildVideoTile(
+                title: 'Participant $index ($shortPeerId)',
+                isLocal: false,
+                renderer: peerRenderer,
+                isMuted: false,
+                isVideoOff: false,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildVideoTile({
+    required String title,
+    required bool isLocal,
+    required RTCVideoRenderer renderer,
+    required bool isMuted,
+    required bool isVideoOff,
+  }) {
+    final hasStream = renderer.srcObject != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLocal ? AppColors.primary.withOpacity(0.6) : Colors.white24,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          // Video View or Fallback Icon
+          Positioned.fill(
+            child: (isVideoOff || !hasStream)
+                ? Container(
+                    color: const Color(0xFF0F172A),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isVideoOff ? Icons.videocam_off : Icons.account_circle,
+                            size: 48,
+                            color: Colors.white38,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            !hasStream ? 'Connecting...' : 'Camera Off',
+                            style: const TextStyle(color: Colors.white54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : RTCVideoView(
+                    renderer,
+                    mirror: isLocal,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
+          ),
+
+          // Name Tag & Audio Status Overlay (Bottom Left)
+          Positioned(
+            left: 10,
+            bottom: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.65),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24, width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isMuted ? Icons.mic_off : Icons.mic,
+                    size: 14,
+                    color: isMuted ? AppColors.callDecline : AppColors.onlineGreen,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOneOnOneVideoArea() {
     return Stack(
       children: [
         // Main Remote Video Stream View (Full area)
@@ -331,5 +515,10 @@ class _CallPageState extends State<CallPage> {
         ),
       ],
     );
+  }
+
+  static String _formatRoomId(String id) {
+    if (id.length <= 16) return id;
+    return '${id.substring(0, 8)}...${id.substring(id.length - 4)}';
   }
 }

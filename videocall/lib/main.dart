@@ -18,6 +18,7 @@ import 'features/settings/presentation/pages/settings_page.dart';
 import 'features/call/presentation/pages/incoming_call_page.dart';
 import 'features/call/presentation/pages/connecting_page.dart';
 import 'features/call/presentation/pages/call_page.dart';
+import 'features/call/presentation/pages/audio_call_page.dart';
 import 'features/call/presentation/pages/call_ended_page.dart';
 
 /// Global navigator key — lets SignalingService push routes from outside the
@@ -155,6 +156,8 @@ class _GlobalIncomingCallListenerState
                   callerMatricule: incoming.callerMatricule,
                   roomId: incoming.roomId,
                   isVideoCall: incoming.isVideoCall,
+                  isGroupCall: incoming.isGroupCall,
+                  groupTitle: incoming.groupTitle,
                   onAccept: () {
                     // Log incoming accepted call
                     final parts = incoming.callerName
@@ -177,6 +180,7 @@ class _GlobalIncomingCallListenerState
                       isOutgoing: false,
                       isMissed: false,
                       contactUserId: incoming.callerUserId,
+                      isGroup: incoming.isGroupCall,
                     );
                     context.read<CallsController>().addCallLog(log);
 
@@ -186,12 +190,26 @@ class _GlobalIncomingCallListenerState
                     // Navigate to the call screen with real room data
                     navigatorKey.currentState?.pushReplacement(
                       MaterialPageRoute<void>(
-                        builder: (_) => CallPage(
-                          callTitle: incoming.isVideoCall
-                              ? 'Video Call – ${incoming.callerName}'
-                              : 'Audio Call – ${incoming.callerName}',
-                          roomId: incoming.roomId,
-                        ),
+                        builder: (_) => incoming.isVideoCall
+                            ? CallPage(
+                                callTitle: incoming.isGroupCall
+                                    ? (incoming.groupTitle ?? 'Group Video Call')
+                                    : 'Video Call – ${incoming.callerName}',
+                                roomId: incoming.roomId,
+                                isVideoCall: true,
+                                isGroupCall: incoming.isGroupCall,
+                                participantCount: incoming.isGroupCall ? 3 : 2,
+                              )
+                            : AudioCallPage(
+                                callTitle: incoming.isGroupCall
+                                    ? (incoming.groupTitle ?? 'Group Audio Call')
+                                    : 'Audio Call – ${incoming.callerName}',
+                                roomId: incoming.roomId,
+                                contactName: incoming.callerName,
+                                contactMatricule: incoming.callerMatricule,
+                                isGroupCall: incoming.isGroupCall,
+                                participantCount: incoming.isGroupCall ? 3 : 2,
+                              ),
                       ),
                     );
                   },
@@ -217,6 +235,7 @@ class _GlobalIncomingCallListenerState
                       isOutgoing: false,
                       isMissed: true,
                       contactUserId: incoming.callerUserId,
+                      isGroup: incoming.isGroupCall,
                     );
                     context.read<CallsController>().addCallLog(log);
 

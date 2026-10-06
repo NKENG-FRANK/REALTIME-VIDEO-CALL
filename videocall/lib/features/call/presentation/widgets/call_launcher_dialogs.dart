@@ -4,11 +4,10 @@ import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
-import '../../../../core/services/signaling_service.dart';
 import 'package:videocall/features/calls/domain/models/call_log.dart';
 import 'package:videocall/features/calls/presentation/controllers/calls_controller.dart';
 
-import '../pages/call_page.dart';
+import '../pages/connecting_page.dart';
 
 /// Shows the Launch Group Call modal screen.
 void showGroupCallLaunchDialog(BuildContext context) {
@@ -164,15 +163,6 @@ void _launchDirectCall(
   final authCtrl = context.read<AuthController>();
   final user = authCtrl.currentUser;
   final myUserId = user?['id']?.toString() ?? user?['userId']?.toString() ?? '';
-  final myName = user != null
-      ? (user['display_name'] ??
-          user['displayName'] ??
-          ((user['first_name'] != null || user['last_name'] != null)
-              ? '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim()
-              : user['username'] ?? user['matricule'] ?? 'User'))
-      : 'User';
-  final myMatricule = user?['matricule']?.toString() ?? '';
-
   final roomId = _buildRoomId(myUserId, recipientUserId);
 
   // Save outgoing call log
@@ -189,32 +179,24 @@ void _launchDirectCall(
   );
   context.read<CallsController>().addCallLog(log);
 
-  // Navigate to call page FIRST so our call socket connects and joins the room,
-  // then send the invite after a brief moment so the callee only arrives once
-  // we are already in the room and ready to negotiate.
+  // Navigate to ConnectingPage first (showing connecting-screen.png animation).
+  // It handles joining the room, sending the invite, and only routes to CallPage or AudioCallPage
+  // after the callee picks up!
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => CallPage(
+      builder: (_) => ConnectingPage(
         callTitle: isVideo
             ? 'Video Call – $recipientName'
             : 'Audio Call – $recipientName',
         roomId: roomId,
+        recipientUserId: recipientUserId,
+        recipientName: recipientName,
+        recipientMatricule: recipientMatricule,
+        isVideoCall: isVideo,
         participantCount: 2,
       ),
     ),
   );
-
-  // Notify callee via the persistent signaling socket AFTER navigation.
-  // A small delay gives our WebRTC socket time to connect and join the room.
-  Future.delayed(const Duration(milliseconds: 800), () {
-    context.read<SignalingService>().sendCallInvite(
-      calleeUserId: recipientUserId,
-      roomId: roomId,
-      isVideoCall: isVideo,
-      callerName: myName,
-      callerMatricule: myMatricule,
-    );
-  });
 }
 
 class _GroupCallLaunchDialog extends StatefulWidget {
@@ -261,15 +243,48 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
     // For group calls, generate a unique room ID
     final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
     final roomId = 'group-$randomCode';
+    final groupTitle = _titleController.text.trim().isNotEmpty
+        ? _titleController.text.trim()
+        : (isVideo ? 'Group Video Call' : 'Group Audio Call');
+
+    // Retrieve full selected contact objects
+    final contactsCtrl = context.read<ContactsController>();
+    final selected = contactsCtrl.contacts
+        .where((c) => _selectedContactIds.contains(c.id))
+        .toList();
+
+    final recipientUserIds = selected.map((c) => c.id).toList();
+    final recipientNames = selected.map((c) => c.name).toList();
+
+    // Save outgoing group call log
+    final log = CallLog(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: groupTitle,
+      initials: 'GRP',
+      colorValue: 0xFF2D5016,
+      time: 'Just now',
+      duration: 'Group Call',
+      isOutgoing: true,
+      isMissed: false,
+      isGroup: true,
+    );
+    context.read<CallsController>().addCallLog(log);
+
     Navigator.pop(context);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => CallPage(
-          callTitle: _titleController.text.trim().isNotEmpty
-              ? _titleController.text.trim()
-              : 'Group Call',
+        builder: (_) => ConnectingPage(
+          callTitle: groupTitle,
           roomId: roomId,
-          participantCount: _selectedContactIds.length + 1,
+          recipientUserId:
+              recipientUserIds.isNotEmpty ? recipientUserIds.first : '',
+          recipientName: groupTitle,
+          recipientMatricule: '${selected.length} members',
+          isVideoCall: isVideo,
+          participantCount: selected.length + 1,
+          isGroupCall: true,
+          recipientUserIds: recipientUserIds,
+          recipientNames: recipientNames,
         ),
       ),
     );

@@ -13,6 +13,8 @@ class IncomingCallData {
   final String callerName;
   final String callerMatricule;
   final bool isVideoCall;
+  final bool isGroupCall;
+  final String? groupTitle;
 
   const IncomingCallData({
     required this.roomId,
@@ -20,6 +22,8 @@ class IncomingCallData {
     required this.callerName,
     required this.callerMatricule,
     required this.isVideoCall,
+    this.isGroupCall = false,
+    this.groupTitle,
   });
 }
 
@@ -47,6 +51,16 @@ class SignalingService extends ChangeNotifier {
 
   /// True when a `call:invite` was sent but the callee is not connected.
   bool get calleeOffline => _calleeOffline;
+
+  /// True when a `call:invite` was sent but the callee declined it.
+  bool _callDeclined = false;
+  bool get callDeclined => _callDeclined;
+
+  void resetCallStatus() {
+    _calleeOffline = false;
+    _callDeclined = false;
+    _safe(notifyListeners);
+  }
 
   bool get isConnected => _socket?.connected == true;
   String? _lastUserToken;
@@ -109,12 +123,18 @@ class SignalingService extends ChangeNotifier {
     _socket!.on('call:incoming', (data) {
       debugPrint('[Signaling] call:incoming → $data');
       final map = data as Map<String, dynamic>;
+      final rawCallType = (map['callType'] as String? ?? 'DIRECT_VIDEO').toUpperCase();
+      final isVideo = rawCallType.contains('VIDEO');
+      final isGroup = rawCallType.contains('GROUP') || (map['isGroup'] == true);
+
       _incomingCall = IncomingCallData(
         roomId: map['roomId'] as String,
         callerUserId: map['callerUserId'] as String,
         callerName: map['callerName'] as String? ?? 'Unknown',
         callerMatricule: map['callerMatricule'] as String? ?? '',
-        isVideoCall: (map['callType'] as String?) == 'DIRECT_VIDEO',
+        isVideoCall: isVideo,
+        isGroupCall: isGroup,
+        groupTitle: map['groupTitle'] as String?,
       );
       _safe(notifyListeners);
     });
@@ -136,7 +156,14 @@ class SignalingService extends ChangeNotifier {
     // ── Caller was declined ──────────────────────────────────────────────
     _socket!.on('call:declined', (data) {
       debugPrint('[Signaling] Call declined: $data');
+      _callDeclined = true;
       _safe(notifyListeners);
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!_disposed) {
+          _callDeclined = false;
+          _safe(notifyListeners);
+        }
+      });
     });
 
     // ── Call ended or canceled by caller ─────────────────────────────────
@@ -205,6 +232,57 @@ class SignalingService extends ChangeNotifier {
       'callerName': callerName,
       'callerMatricule': callerMatricule,
     });
+  }
+
+  /// Emit `call:invite` for multiple participants so their devices ring for a group call.
+  Future<void> sendGroupCallInvites({
+    required List<String> calleeUserIds,
+    required String roomId,
+    required bool isVideoCall,
+    required String groupTitle,
+    required String callerName,
+    required String callerMatricule,
+  }) async {
+    if (_socket == null || !_socket!.connected) {
+      debugPrint(
+        '[Signaling] Socket not connected in sendGroupCallInvites, attempting connection...',
+      );
+      final token = await AuthService.getToken();
+      if (token != null && token.isNotEmpty) {
+        await connect(token);
+        int waitMs = 0;
+        while ((_socket == null || !_socket!.connected) && waitMs < 5000) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          waitMs += 100;
+        }
+      }
+    }
+
+    if (_socket == null || !_socket!.connected) {
+      debugPrint(
+        '[Signaling] Cannot send group invites: socket not connected after retry',
+      );
+      return;
+    }
+
+    final callType = isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO';
+    debugPrint(
+      '[Signaling] Sending group invites to ${calleeUserIds.length} users for room $roomId ($callType)',
+    );
+
+    for (final calleeId in calleeUserIds) {
+      if (calleeId.trim().isEmpty) continue;
+      debugPrint('[Signaling] Inviting $calleeId to group call "$groupTitle"');
+      _socket!.emit('call:invite', {
+        'calleeUserId': calleeId,
+        'roomId': roomId,
+        'callType': callType,
+        'callerName': '$callerName ($groupTitle)',
+        'callerMatricule': callerMatricule,
+        'groupTitle': groupTitle,
+        'isGroup': true,
+      });
+    }
   }
 
   // ── Callee API ────────────────────────────────────────────────────────────
