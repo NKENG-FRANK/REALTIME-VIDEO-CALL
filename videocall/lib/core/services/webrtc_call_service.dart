@@ -72,6 +72,7 @@ class WebRTCCallService extends ChangeNotifier {
       },
     ],
     'sdpSemantics': 'unified-plan',
+    'iceCandidatePoolSize': 10,
   };
 
   late final Future<void> _initRenderersFuture = _initRenderers();
@@ -280,10 +281,13 @@ class WebRTCCallService extends ChangeNotifier {
     // ── call:ended ────────────────────────────────────────────────────────
     _socket!.on('call:ended', (data) {
       String? eventRoomId;
+      String? endedBy;
       if (data is Map) {
         eventRoomId = data['roomId'] as String?;
+        endedBy = (data['endedBy'] as String?) ?? (data['userId'] as String?);
       } else if (data is List && data.isNotEmpty && data.first is Map) {
         eventRoomId = data.first['roomId'] as String?;
+        endedBy = (data.first['endedBy'] as String?) ?? (data.first['userId'] as String?);
       }
       if (eventRoomId != null && eventRoomId != _currentRoomId) {
         debugPrint(
@@ -291,7 +295,19 @@ class WebRTCCallService extends ChangeNotifier {
         );
         return;
       }
-      debugPrint('[WebRTC] Call ended by server/peer: $data');
+      debugPrint('[WebRTC] Received call:ended payload: $data');
+
+      if (_isGroupCall) {
+        // In group calls, single participant exit does NOT terminate call for everyone.
+        if (endedBy != null) {
+          debugPrint('[WebRTC] Group call: Participant $endedBy left, removing peer connection...');
+          _removePeerConnection(endedBy);
+        }
+        if (_peerConnections.isEmpty) {
+          endCall();
+        }
+        return;
+      }
       endCall();
     });
 
@@ -309,16 +325,12 @@ class WebRTCCallService extends ChangeNotifier {
       }
       debugPrint('[WebRTC] Participant left: $data');
 
+      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final peerId = _peerIdFromData(map);
+
       if (_isGroupCall) {
-        // In group calls: close only that peer's connection, keep the call alive.
-        final map =
-            data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
-        final peerId =
-            (map['socketId'] as String?) ?? (map['userId'] as String?);
-        if (peerId != null) {
-          _removePeerConnection(peerId);
-        }
-        // If no more peers remain, end the call.
+        // Close only that peer's connection so the video tile disappears and call continues for others
+        _removePeerConnection(peerId);
         if (_peerConnections.isEmpty) endCall();
       } else {
         endCall();
@@ -336,13 +348,19 @@ class WebRTCCallService extends ChangeNotifier {
 
   Future<void> startLocalMedia({bool video = true, bool audio = true}) async {
     final Map<String, dynamic> mediaConstraints = {
-      'audio': audio,
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
       'video': video
           ? {
               'mandatory': {
-                'minWidth': '640',
-                'minHeight': '480',
-                'minFrameRate': '30',
+                'minWidth': '480',
+                'minHeight': '360',
+                'maxWidth': '640',
+                'maxHeight': '480',
+                'maxFrameRate': '24',
               },
               'facingMode': 'user',
               'optional': [],
@@ -431,6 +449,7 @@ class WebRTCCallService extends ChangeNotifier {
       for (final track in _localStream!.getTracks()) {
         await pc.addTrack(track, _localStream!);
       }
+      await _optimizeSenderBitrate(pc);
     }
 
     // Handle incoming remote tracks from this peer.
@@ -482,6 +501,24 @@ class WebRTCCallService extends ChangeNotifier {
     };
 
     return pc;
+  }
+
+  /// Optimize video encoding bitrate dynamically to eliminate lag in group calls
+  Future<void> _optimizeSenderBitrate(RTCPeerConnection pc) async {
+    try {
+      final senders = await pc.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          final params = sender.parameters;
+          if (params.encodings != null && params.encodings!.isNotEmpty) {
+            params.encodings![0].maxBitrate = _isGroupCall ? 350000 : 750000;
+            await sender.setParameters(params);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] Bitrate optimization note: $e');
+    }
   }
 
   // ── Offer / Answer ────────────────────────────────────────────────────────
