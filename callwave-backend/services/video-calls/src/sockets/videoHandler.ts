@@ -297,25 +297,43 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── WebRTC Direct Peer-to-Peer Signaling ───────────────────────────────────
 
-  socket.on('webrtc:offer', async (data: { roomId: string; sdp: any }) => {
-    socket.to(data.roomId).emit('webrtc:offer', {
+  socket.on('webrtc:offer', async (data: { roomId: string; to?: string; sdp: any }) => {
+    const payload = {
       senderUserId: userId,
+      targetUserId: data.to,
       sdp: data.sdp,
-    });
+    };
+    if (data.to) {
+      io.to(data.to).emit('webrtc:offer', payload);
+    } else {
+      socket.to(data.roomId).emit('webrtc:offer', payload);
+    }
   });
 
-  socket.on('webrtc:answer', async (data: { roomId: string; sdp: any }) => {
-    socket.to(data.roomId).emit('webrtc:answer', {
+  socket.on('webrtc:answer', async (data: { roomId: string; to?: string; sdp: any }) => {
+    const payload = {
       senderUserId: userId,
+      targetUserId: data.to,
       sdp: data.sdp,
-    });
+    };
+    if (data.to) {
+      io.to(data.to).emit('webrtc:answer', payload);
+    } else {
+      socket.to(data.roomId).emit('webrtc:answer', payload);
+    }
   });
 
-  socket.on('webrtc:candidate', async (data: { roomId: string; candidate: any }) => {
-    socket.to(data.roomId).emit('webrtc:candidate', {
+  socket.on('webrtc:candidate', async (data: { roomId: string; to?: string; candidate: any }) => {
+    const payload = {
       senderUserId: userId,
+      targetUserId: data.to,
       candidate: data.candidate,
-    });
+    };
+    if (data.to) {
+      io.to(data.to).emit('webrtc:candidate', payload);
+    } else {
+      socket.to(data.roomId).emit('webrtc:candidate', payload);
+    }
   });
 }
 
@@ -338,15 +356,15 @@ async function leaveRoom(
   // triggering endCall() again on the Flutter side.
   const remainingParticipants = getRoomParticipants(roomId);
   if (remainingParticipants.length > 0) {
-    socket.to(roomId).emit('room:participant_left', { userId });
+    socket.to(roomId).emit('room:participant_left', { userId, roomId });
     socket.to(roomId).emit('call:ended', { roomId, endedBy: userId });
   }
 
-  // Publish to RabbitMQ for background processing
-  await publishCallEvent('call.completed', {
+  // Publish to RabbitMQ asynchronously in background (non-blocking for instant signaling)
+  publishCallEvent('call.completed', {
     roomId,
     userId,
     durationSeconds: durationSeconds ?? 0,
     status,
-  });
+  }).catch((err: any) => console.error('[VideoHandler] Background RabbitMQ event error:', err.message));
 }

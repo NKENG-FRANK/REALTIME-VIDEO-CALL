@@ -1,46 +1,63 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
 import 'signal_indicator.dart';
+import 'voice_wave_indicator.dart';
 
-/// A card showing a participant's avatar, name, and signal strength.
+/// A card showing a participant's avatar, name, speaking indicator, and signal strength.
 /// Used in the call screen sidebar grid.
 class ParticipantCard extends StatelessWidget {
   final String name;
   final String initials;
   final Color avatarColor;
   final int signalStrength;
+  final bool isSpeaking;
+  final double audioLevel;
 
   const ParticipantCard({
-    Key? key,
+    super.key,
     required this.name,
     required this.initials,
     required this.avatarColor,
     this.signalStrength = 3,
-  }) : super(key: key);
+    this.isSpeaking = false,
+    this.audioLevel = 0.0,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: isSpeaking
+            ? const Color(0xFFECFDF5)
+            : Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFE0EAE2).withOpacity(0.6),
+          color: isSpeaking
+              ? const Color(0xFF10B981)
+              : const Color(0xFFE0EAE2).withValues(alpha: 0.6),
+          width: isSpeaking ? 1.5 : 1.0,
         ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
+        boxShadow: [
+          if (isSpeaking)
+            BoxShadow(
+              color: const Color(0xFF10B981).withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            )
+          else
+            const BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 8),
-          // Avatar
+          // Avatar with speaking highlight ring
           Container(
             width: 44,
             height: 44,
@@ -48,6 +65,18 @@ class ParticipantCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: avatarColor,
               shape: BoxShape.circle,
+              border: isSpeaking
+                  ? Border.all(color: const Color(0xFF10B981), width: 2.5)
+                  : null,
+              boxShadow: isSpeaking
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
             child: Text(
               initials,
@@ -59,7 +88,7 @@ class ParticipantCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Name and signal
+          // Name, Voice Wave, and Signal
           Row(
             children: [
               Expanded(
@@ -67,12 +96,24 @@ class ParticipantCard extends StatelessWidget {
                   name,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: AppColors.textMuted.withOpacity(0.7),
+                    color: isSpeaking
+                        ? const Color(0xFF065F46)
+                        : AppColors.textMuted.withValues(alpha: 0.7),
                     fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: isSpeaking ? FontWeight.w800 : FontWeight.w600,
                   ),
                 ),
               ),
+              if (isSpeaking) ...[
+                const SizedBox(width: 4),
+                VoiceWaveIndicator(
+                  isSpeaking: true,
+                  audioLevel: audioLevel,
+                  maxHeight: 12,
+                  barWidth: 2,
+                  barCount: 3,
+                ),
+              ],
               const SizedBox(width: 4),
               SignalIndicator(
                 strength: signalStrength,

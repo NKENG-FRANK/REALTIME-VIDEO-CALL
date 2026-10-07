@@ -6,6 +6,7 @@ import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
 import '../widgets/signal_indicator.dart';
+import '../widgets/voice_wave_indicator.dart';
 import 'call_ended_page.dart';
 
 class CallPage extends StatefulWidget {
@@ -229,11 +230,13 @@ class _CallPageState extends State<CallPage> {
             ),
           ),
           const SizedBox(height: 14),
-          const ParticipantCard(
+          ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
             avatarColor: AppColors.primary,
             signalStrength: 3,
+            isSpeaking: _callService.isLocalSpeaking,
+            audioLevel: _callService.getAudioLevel('local'),
           ),
           const SizedBox(height: 10),
           ParticipantCard(
@@ -241,6 +244,12 @@ class _CallPageState extends State<CallPage> {
             initials: widget.isGroupCall ? 'M1' : 'RP',
             avatarColor: const Color(0xFF10A47D),
             signalStrength: 3,
+            isSpeaking: _callService.activeSpeakerId != null &&
+                _callService.activeSpeakerId != 'local',
+            audioLevel: _callService.activeSpeakerId != null &&
+                    _callService.activeSpeakerId != 'local'
+                ? _callService.getAudioLevel(_callService.activeSpeakerId!)
+                : 0.0,
           ),
           if (widget.isGroupCall && widget.participantCount > 2) ...[
             for (int i = 2; i < widget.participantCount; i++) ...[
@@ -250,6 +259,7 @@ class _CallPageState extends State<CallPage> {
                 initials: 'M$i',
                 avatarColor: const Color(0xFF8752F4),
                 signalStrength: 3,
+                isSpeaking: false,
               ),
             ],
           ],
@@ -302,6 +312,8 @@ class _CallPageState extends State<CallPage> {
                   renderer: _callService.localRenderer,
                   isMuted: _callService.isMicMuted,
                   isVideoOff: _callService.isVideoOff,
+                  isSpeaking: _callService.isLocalSpeaking,
+                  audioLevel: _callService.getAudioLevel('local'),
                 );
               }
 
@@ -310,6 +322,8 @@ class _CallPageState extends State<CallPage> {
               final peerId = peerEntry.key;
               final peerRenderer = peerEntry.value;
               final shortPeerId = peerId.length > 8 ? peerId.substring(0, 8) : peerId;
+              final isPeerSpeaking = _callService.isSpeaking(peerId);
+              final peerAudioLevel = _callService.getAudioLevel(peerId);
 
               return _buildVideoTile(
                 title: 'Participant $index ($shortPeerId)',
@@ -317,6 +331,8 @@ class _CallPageState extends State<CallPage> {
                 renderer: peerRenderer,
                 isMuted: false,
                 isVideoOff: false,
+                isSpeaking: isPeerSpeaking,
+                audioLevel: peerAudioLevel,
               );
             },
           );
@@ -331,6 +347,8 @@ class _CallPageState extends State<CallPage> {
     required RTCVideoRenderer renderer,
     required bool isMuted,
     required bool isVideoOff,
+    bool isSpeaking = false,
+    double audioLevel = 0.0,
   }) {
     final hasStream = renderer.srcObject != null;
 
@@ -339,15 +357,24 @@ class _CallPageState extends State<CallPage> {
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isLocal ? AppColors.primary.withOpacity(0.6) : Colors.white24,
-          width: 2,
+          color: isSpeaking
+              ? const Color(0xFF10B981)
+              : (isLocal ? AppColors.primary.withOpacity(0.6) : Colors.white24),
+          width: isSpeaking ? 3.0 : 2.0,
         ),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
+          if (isSpeaking)
+            BoxShadow(
+              color: const Color(0xFF10B981).withOpacity(0.55),
+              blurRadius: 18,
+              spreadRadius: 2,
+            )
+          else
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -390,9 +417,14 @@ class _CallPageState extends State<CallPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.65),
+                color: isSpeaking
+                    ? const Color(0xE6064E3B)
+                    : Colors.black.withOpacity(0.65),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white24, width: 1),
+                border: Border.all(
+                  color: isSpeaking ? const Color(0xFF10B981) : Colors.white24,
+                  width: 1,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -402,13 +434,23 @@ class _CallPageState extends State<CallPage> {
                     size: 14,
                     color: isMuted ? AppColors.callDecline : AppColors.onlineGreen,
                   ),
+                  if (isSpeaking) ...[
+                    const SizedBox(width: 5),
+                    VoiceWaveIndicator(
+                      isSpeaking: true,
+                      audioLevel: audioLevel,
+                      maxHeight: 12,
+                      barWidth: 2,
+                      barCount: 3,
+                    ),
+                  ],
                   const SizedBox(width: 6),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: isSpeaking ? FontWeight.w700 : FontWeight.w600,
                     ),
                   ),
                 ],
@@ -421,6 +463,12 @@ class _CallPageState extends State<CallPage> {
   }
 
   Widget _buildOneOnOneVideoArea() {
+    final isRemoteSpeaking = _callService.activeSpeakerId != null &&
+        _callService.activeSpeakerId != 'local';
+    final remoteAudioLevel = isRemoteSpeaking
+        ? _callService.getAudioLevel(_callService.activeSpeakerId!)
+        : 0.0;
+
     return Stack(
       children: [
         // Main Remote Video Stream View (Full area)
@@ -448,6 +496,49 @@ class _CallPageState extends State<CallPage> {
           ),
         ),
 
+        // Remote Active Speaker Floating Pill (Bottom Left)
+        if (isRemoteSpeaking)
+          Positioned(
+            left: 20,
+            bottom: 24,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xE6064E3B),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  VoiceWaveIndicator(
+                    isSpeaking: true,
+                    audioLevel: remoteAudioLevel,
+                    maxHeight: 14,
+                    barWidth: 2.2,
+                    barCount: 4,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${widget.callTitle} is speaking',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         // Floating Local Video Camera Preview (Picture-in-Picture)
         Positioned(
           right: 20,
@@ -458,25 +549,76 @@ class _CallPageState extends State<CallPage> {
             decoration: BoxDecoration(
               color: Colors.black54,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white38, width: 2),
+              border: Border.all(
+                color: _callService.isLocalSpeaking
+                    ? const Color(0xFF10B981)
+                    : Colors.white38,
+                width: _callService.isLocalSpeaking ? 3 : 2,
+              ),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
+                if (_callService.isLocalSpeaking)
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.55),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  )
+                else
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: _callService.isVideoOff
-                ? const Center(
-                    child: Icon(Icons.videocam_off, color: Colors.white54, size: 36),
-                  )
-                : RTCVideoView(
-                    _callService.localRenderer,
-                    mirror: true,
-                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: _callService.isVideoOff
+                      ? const Center(
+                          child: Icon(Icons.videocam_off, color: Colors.white54, size: 36),
+                        )
+                      : RTCVideoView(
+                          _callService.localRenderer,
+                          mirror: true,
+                          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                        ),
+                ),
+                if (_callService.isLocalSpeaking)
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xE6064E3B),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          VoiceWaveIndicator(
+                            isSpeaking: true,
+                            audioLevel: _callService.getAudioLevel('local'),
+                            maxHeight: 10,
+                            barWidth: 1.8,
+                            barCount: 3,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'You',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
+              ],
+            ),
           ),
         ),
       ],

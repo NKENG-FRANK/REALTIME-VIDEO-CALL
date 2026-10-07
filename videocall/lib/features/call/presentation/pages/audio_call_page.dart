@@ -5,6 +5,7 @@ import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
 import '../widgets/signal_indicator.dart';
+import '../widgets/voice_wave_indicator.dart';
 import 'call_ended_page.dart';
 
 /// Dedicated Audio Call screen designed specifically for voice-only calls.
@@ -248,11 +249,13 @@ class _AudioCallPageState extends State<AudioCallPage>
             ),
           ),
           const SizedBox(height: 14),
-          const ParticipantCard(
+          ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
             avatarColor: AppColors.primary,
             signalStrength: 3,
+            isSpeaking: _callService.isLocalSpeaking,
+            audioLevel: _callService.getAudioLevel('local'),
           ),
           const SizedBox(height: 10),
           ParticipantCard(
@@ -260,6 +263,12 @@ class _AudioCallPageState extends State<AudioCallPage>
             initials: _deriveInitials(widget.contactName),
             avatarColor: const Color(0xFF10A47D),
             signalStrength: 3,
+            isSpeaking: _callService.activeSpeakerId != null &&
+                _callService.activeSpeakerId != 'local',
+            audioLevel: _callService.activeSpeakerId != null &&
+                    _callService.activeSpeakerId != 'local'
+                ? _callService.getAudioLevel(_callService.activeSpeakerId!)
+                : 0.0,
           ),
           if (widget.isGroupCall && widget.participantCount > 2) ...[
             for (int i = 2; i < widget.participantCount; i++) ...[
@@ -269,6 +278,7 @@ class _AudioCallPageState extends State<AudioCallPage>
                 initials: 'M$i',
                 avatarColor: const Color(0xFF8752F4),
                 signalStrength: 3,
+                isSpeaking: false,
               ),
             ],
           ],
@@ -279,6 +289,14 @@ class _AudioCallPageState extends State<AudioCallPage>
 
   Widget _buildHeroAudioArea() {
     final initials = _deriveInitials(widget.contactName);
+    final isPeerSpeaking = _callService.activeSpeakerId != null &&
+        _callService.activeSpeakerId != 'local';
+    final peerAudioLevel = isPeerSpeaking
+        ? _callService.getAudioLevel(_callService.activeSpeakerId!)
+        : 0.0;
+    final currentAudioLevel = isPeerSpeaking
+        ? peerAudioLevel
+        : (_callService.isLocalSpeaking ? _callService.getAudioLevel('local') : 0.0);
 
     return Center(
       child: SingleChildScrollView(
@@ -296,7 +314,10 @@ class _AudioCallPageState extends State<AudioCallPage>
                   return CustomPaint(
                     painter: _AudioRipplePainter(
                       progress: _pulseController.value,
-                      color: AppColors.primary,
+                      color: isPeerSpeaking || _callService.isLocalSpeaking
+                          ? const Color(0xFF10B981)
+                          : AppColors.primary,
+                      audioLevel: currentAudioLevel,
                     ),
                     child: Center(
                       child: Stack(
@@ -382,6 +403,40 @@ class _AudioCallPageState extends State<AudioCallPage>
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
+              ),
+            const SizedBox(height: 8),
+            // Speaking status badge
+            if (isPeerSpeaking || _callService.isLocalSpeaking)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF10B981), width: 1.2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    VoiceWaveIndicator(
+                      isSpeaking: true,
+                      audioLevel: currentAudioLevel,
+                      maxHeight: 12,
+                      barWidth: 2,
+                      barCount: 3,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isPeerSpeaking
+                          ? '${widget.contactName} is speaking'
+                          : 'You are speaking',
+                      style: const TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             const SizedBox(height: 14),
             // Live Timer
@@ -489,24 +544,31 @@ class _AudioCallPageState extends State<AudioCallPage>
 class _AudioRipplePainter extends CustomPainter {
   final double progress;
   final Color color;
+  final double audioLevel;
 
-  _AudioRipplePainter({required this.progress, required this.color});
+  _AudioRipplePainter({
+    required this.progress,
+    required this.color,
+    this.audioLevel = 0.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     const baseRadius = 66.0;
-    const maxRadius = 115.0;
+    final extraSpread = audioLevel.clamp(0.0, 1.0) * 35.0;
+    final maxRadius = 115.0 + extraSpread;
 
     for (int i = 0; i < 3; i++) {
       final ringProgress = (progress + (i * 0.33)) % 1.0;
       final radius = baseRadius + (maxRadius - baseRadius) * ringProgress;
-      final opacity = (1.0 - ringProgress) * 0.22;
+      final boost = audioLevel > 0.04 ? 0.35 : 0.22;
+      final opacity = (1.0 - ringProgress) * boost;
 
       final paint = Paint()
-        ..color = color.withOpacity(opacity)
+        ..color = color.withOpacity(opacity.clamp(0.0, 1.0))
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
+        ..strokeWidth = audioLevel > 0.04 ? 2.5 : 2.0;
 
       canvas.drawCircle(center, radius, paint);
     }
@@ -514,5 +576,5 @@ class _AudioRipplePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AudioRipplePainter oldDelegate) =>
-      oldDelegate.progress != progress;
+      oldDelegate.progress != progress || oldDelegate.audioLevel != audioLevel;
 }

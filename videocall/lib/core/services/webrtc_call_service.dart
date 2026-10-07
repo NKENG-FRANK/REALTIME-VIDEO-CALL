@@ -5,6 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../config/api_config.dart';
+import 'auth_service.dart';
 
 enum CallState { idle, connecting, connected, ended }
 
@@ -19,6 +20,7 @@ class WebRTCCallService extends ChangeNotifier {
   final Map<String, RTCPeerConnection> _peerConnections = {};
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
   final Map<String, MediaStream> _remoteStreams = {};
+  final Map<String, bool> _makingOffer = {};
 
   // ── Renderers (public) ────────────────────────────────────────────────────
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
@@ -32,6 +34,7 @@ class WebRTCCallService extends ChangeNotifier {
   CallState get callState => _callState;
 
   String? _currentRoomId;
+  String? _currentUserId;
   DateTime? _callStartTime;
 
   bool _isVideoCall = true;
@@ -45,6 +48,18 @@ class WebRTCCallService extends ChangeNotifier {
 
   bool _isSpeakerOn = false;
   bool get isSpeakerOn => _isSpeakerOn;
+
+  // ── Active Speaker & Audio Level Detection ────────────────────────────────
+  Timer? _speakerStatsTimer;
+  final Map<String, double> _audioLevels = {};
+  String? _activeSpeakerId;
+  DateTime? _lastSpeechTime;
+
+  String? get activeSpeakerId => _activeSpeakerId;
+  Map<String, double> get audioLevels => Map.unmodifiable(_audioLevels);
+  double getAudioLevel(String id) => _audioLevels[id] ?? 0.0;
+  bool isSpeaking(String id) => (_audioLevels[id] ?? 0.0) > 0.04;
+  bool get isLocalSpeaking => isSpeaking('local');
 
   String get formattedDuration {
     if (_callStartTime == null) return '00:05';
@@ -124,6 +139,11 @@ class WebRTCCallService extends ChangeNotifier {
   // ── Socket initialization ─────────────────────────────────────────────────
 
   Future<void> initializeSocket(String userToken) async {
+    final userMap = await AuthService.getCurrentUser();
+    if (userMap != null) {
+      _currentUserId = (userMap['id'] as String?) ?? (userMap['userId'] as String?);
+    }
+
     if (_socket != null && _socket!.connected) return;
 
     if (_socket != null) {
@@ -190,20 +210,20 @@ class WebRTCCallService extends ChangeNotifier {
       );
 
       // Create a dedicated offer for this specific peer.
-      // Any participant who joined earlier (or is first) sends offers.
-      if (_isFirstPeer || _peerConnections.isEmpty) {
-        await _createOffer(peerId);
-      } else if (_isGroupCall) {
-        // In a group call, every existing participant creates an offer
-        // to the newly joined peer.
+      if (_isFirstPeer || _peerConnections.isEmpty || _isGroupCall) {
         await _createOffer(peerId);
       }
     });
 
     // ── webrtc:offer ──────────────────────────────────────────────────────
     _socket!.on('webrtc:offer', (data) async {
-      debugPrint('[WebRTC] Received WebRTC offer');
       final map = data as Map<String, dynamic>;
+      final targetUserId = map['targetUserId'] as String?;
+      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+        debugPrint('[WebRTC] Ignoring offer targeted to $targetUserId (my id: $_currentUserId)');
+        return;
+      }
+      debugPrint('[WebRTC] Received WebRTC offer');
       final sdpMap = map['sdp'] as Map<String, dynamic>;
       final peerId = _peerIdFromData(
         map,
@@ -214,8 +234,13 @@ class WebRTCCallService extends ChangeNotifier {
 
     // ── webrtc:answer ─────────────────────────────────────────────────────
     _socket!.on('webrtc:answer', (data) async {
-      debugPrint('[WebRTC] Received WebRTC answer');
       final map = data as Map<String, dynamic>;
+      final targetUserId = map['targetUserId'] as String?;
+      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+        debugPrint('[WebRTC] Ignoring answer targeted to $targetUserId (my id: $_currentUserId)');
+        return;
+      }
+      debugPrint('[WebRTC] Received WebRTC answer');
       final sdpMap = map['sdp'] as Map<String, dynamic>;
       final peerId = _peerIdFromData(
         map,
@@ -225,7 +250,6 @@ class WebRTCCallService extends ChangeNotifier {
       final pc = _peerConnections[peerId];
       if (pc == null) {
         debugPrint('[WebRTC] No peer connection found for peerId: $peerId, connections: ${_peerConnections.keys}');
-        // Fallback: try the first available connection (1-on-1 compat)
         final fallbackPc = _peerConnections.values.firstOrNull;
         if (fallbackPc != null) {
           final description =
@@ -233,6 +257,7 @@ class WebRTCCallService extends ChangeNotifier {
           await fallbackPc.setRemoteDescription(description);
           final fallbackKey = _peerConnections.keys.first;
           await _drainPendingCandidates(fallbackKey);
+          _updateAdaptiveBitrates();
         }
         return;
       }
@@ -240,12 +265,17 @@ class WebRTCCallService extends ChangeNotifier {
           RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
       await pc.setRemoteDescription(description);
       await _drainPendingCandidates(peerId);
+      _updateAdaptiveBitrates();
     });
 
     // ── webrtc:candidate ──────────────────────────────────────────────────
     _socket!.on('webrtc:candidate', (data) async {
-      debugPrint('[WebRTC] <<< Remote ICE candidate arrived');
       final map = data as Map<String, dynamic>;
+      final targetUserId = map['targetUserId'] as String?;
+      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+        return;
+      }
+      debugPrint('[WebRTC] <<< Remote ICE candidate arrived');
       final candidateMap = map['candidate'] as Map<String, dynamic>?;
       if (candidateMap == null) return;
 
@@ -449,7 +479,7 @@ class WebRTCCallService extends ChangeNotifier {
       for (final track in _localStream!.getTracks()) {
         await pc.addTrack(track, _localStream!);
       }
-      await _optimizeSenderBitrate(pc);
+      await _updateAdaptiveBitrates();
     }
 
     // Handle incoming remote tracks from this peer.
@@ -498,48 +528,291 @@ class WebRTCCallService extends ChangeNotifier {
 
     pc.onIceConnectionState = (RTCIceConnectionState state) {
       debugPrint('[WebRTC] ICE Connection State for $peerId: $state');
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _startSpeakerStatsMonitor();
+        _updateAdaptiveBitrates();
+      }
     };
 
     return pc;
   }
 
-  /// Optimize video encoding bitrate dynamically to eliminate lag in group calls
-  Future<void> _optimizeSenderBitrate(RTCPeerConnection pc) async {
-    try {
-      final senders = await pc.getSenders();
-      for (final sender in senders) {
-        if (sender.track?.kind == 'video') {
-          final params = sender.parameters;
-          if (params.encodings != null && params.encodings!.isNotEmpty) {
-            params.encodings![0].maxBitrate = _isGroupCall ? 350000 : 750000;
-            await sender.setParameters(params);
+  /// Optimize SDP by enabling Opus DTX (Discontinuous Transmission)
+  /// and applying bandwidth limits (b=AS) on video.
+  String _optimizeSdp(String sdp, {required int peerCount}) {
+    var modified = sdp;
+
+    // 1. Audio: Enable Opus DTX & In-Band FEC to eliminate silence-packet flooding
+    modified = modified.replaceAllMapped(
+      RegExp(r'(a=fmtp:\d+ [^\r\n]*)'),
+      (match) {
+        final line = match.group(0)!;
+        if (!line.contains('usedtx=')) {
+          return '$line;usedtx=1;useinbandfec=1;maxaveragebitrate=32000';
+        }
+        return line;
+      },
+    );
+
+    // 2. Video: Apply b=AS bitrate limit matching participant scale
+    if (_isVideoCall) {
+      final int videoBitrateKbps;
+      if (peerCount <= 1 && !_isGroupCall) {
+        videoBitrateKbps = 750;
+      } else if (peerCount <= 2) {
+        videoBitrateKbps = 300;
+      } else {
+        videoBitrateKbps = 180;
+      }
+
+      if (modified.contains('b=AS:')) {
+        modified = modified.replaceAll(
+          RegExp(r'b=AS:\d+'),
+          'b=AS:$videoBitrateKbps',
+        );
+      } else {
+        modified = modified.replaceFirstMapped(
+          RegExp(r'(m=video[^\r\n]*\r?\n(?:c=IN[^\r\n]*\r?\n)?)'),
+          (match) => '${match.group(0)}b=AS:$videoBitrateKbps\r\n',
+        );
+      }
+    }
+
+    return modified;
+  }
+
+  /// Dynamically updates video bitrate, framerate, and resolution downscaling
+  /// across all active peer connections based on participant count.
+  Future<void> _updateAdaptiveBitrates() async {
+    final peerCount = _peerConnections.length;
+    if (peerCount == 0) return;
+
+    final int targetMaxBitrate;
+    final int targetMaxFramerate;
+    final double targetScaleDown;
+
+    if (peerCount <= 1 && !_isGroupCall) {
+      // 1-on-1 call: Maximum clarity (750 kbps, 24 fps, no downscaling)
+      targetMaxBitrate = 750000;
+      targetMaxFramerate = 24;
+      targetScaleDown = 1.0;
+    } else if (peerCount <= 2) {
+      // 3 participants total (2 outgoing streams): 300 kbps, 20 fps, 1.5x downscaling
+      targetMaxBitrate = 300000;
+      targetMaxFramerate = 20;
+      targetScaleDown = 1.5;
+    } else {
+      // 4+ participants: 180 kbps, 15 fps, 2.0x downscaling (75% fewer pixels)
+      targetMaxBitrate = 180000;
+      targetMaxFramerate = 15;
+      targetScaleDown = 2.0;
+    }
+
+    debugPrint(
+      '[WebRTC] Applying adaptive quality for $peerCount peer(s): '
+      'bitrate=${targetMaxBitrate ~/ 1000}kbps, '
+      'fps=$targetMaxFramerate, '
+      'scaleDown=$targetScaleDown',
+    );
+
+    for (final entry in _peerConnections.entries) {
+      final peerId = entry.key;
+      final pc = entry.value;
+      try {
+        final senders = await pc.getSenders();
+        for (final sender in senders) {
+          if (sender.track?.kind == 'video') {
+            final params = sender.parameters;
+            if (params.encodings != null && params.encodings!.isNotEmpty) {
+              for (final enc in params.encodings!) {
+                enc.maxBitrate = targetMaxBitrate;
+                enc.maxFramerate = targetMaxFramerate;
+                enc.scaleResolutionDownBy = targetScaleDown;
+              }
+              await sender.setParameters(params);
+              debugPrint('[WebRTC] Updated sender parameters for peer $peerId');
+            }
           }
         }
+      } catch (e) {
+        debugPrint('[WebRTC] Error setting adaptive parameters for $peerId: $e');
       }
-    } catch (e) {
-      debugPrint('[WebRTC] Bitrate optimization note: $e');
     }
   }
 
-  // ── Offer / Answer ────────────────────────────────────────────────────────
+  // ── Active Speaker Detection Monitor ─────────────────────────────────────
+
+  void _startSpeakerStatsMonitor() {
+    if (_speakerStatsTimer != null) return;
+    _speakerStatsTimer = Timer.periodic(const Duration(milliseconds: 350), (_) async {
+      if (_callState != CallState.connected || _peerConnections.isEmpty) {
+        if (_activeSpeakerId != null) {
+          _activeSpeakerId = null;
+          _audioLevels.clear();
+          _safeNotify();
+        }
+        return;
+      }
+
+      String? topSpeakerId;
+      double topLevel = 0.04;
+      bool hasChanges = false;
+
+      // 1. Remote peers audio levels
+      for (final entry in _peerConnections.entries) {
+        final peerId = entry.key;
+        final pc = entry.value;
+        try {
+          final stats = await pc.getStats();
+          for (final report in stats) {
+            final level = _extractAudioLevel(report);
+            if (level != null) {
+              final prev = _audioLevels[peerId] ?? 0.0;
+              final smoothed = (prev * 0.3) + (level * 0.7);
+              _audioLevels[peerId] = smoothed;
+              if (smoothed > topLevel) {
+                topLevel = smoothed;
+                topSpeakerId = peerId;
+              }
+              if ((prev - smoothed).abs() > 0.02) {
+                hasChanges = true;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Local audio level (if not muted)
+      if (!_isMicMuted && _peerConnections.isNotEmpty) {
+        final firstPc = _peerConnections.values.firstOrNull;
+        if (firstPc != null) {
+          try {
+            final stats = await firstPc.getStats();
+            for (final report in stats) {
+              if (report.type == 'media-source' || report.type == 'outbound-rtp') {
+                final level = _extractAudioLevel(report);
+                if (level != null) {
+                  final prev = _audioLevels['local'] ?? 0.0;
+                  final smoothed = (prev * 0.3) + (level * 0.7);
+                  _audioLevels['local'] = smoothed;
+                  if (smoothed > topLevel) {
+                    topLevel = smoothed;
+                    topSpeakerId = 'local';
+                  }
+                  if ((prev - smoothed).abs() > 0.02) {
+                    hasChanges = true;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      } else {
+        if ((_audioLevels['local'] ?? 0.0) > 0.0) {
+          _audioLevels['local'] = 0.0;
+          hasChanges = true;
+        }
+      }
+
+      // 3. Active speaker holdover / hysteresis
+      final now = DateTime.now();
+      if (topSpeakerId != null) {
+        _lastSpeechTime = now;
+        if (_activeSpeakerId != topSpeakerId) {
+          _activeSpeakerId = topSpeakerId;
+          hasChanges = true;
+        }
+      } else if (_lastSpeechTime != null &&
+          now.difference(_lastSpeechTime!) > const Duration(milliseconds: 700)) {
+        if (_activeSpeakerId != null) {
+          _activeSpeakerId = null;
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        _safeNotify();
+      }
+    });
+  }
+
+  void _stopSpeakerStatsMonitor() {
+    _speakerStatsTimer?.cancel();
+    _speakerStatsTimer = null;
+    _audioLevels.clear();
+    _activeSpeakerId = null;
+    _lastSpeechTime = null;
+  }
+
+  double? _extractAudioLevel(StatsReport report) {
+    final values = report.values;
+    final kind = values['kind'] ?? values['mediaType'];
+    if (kind != 'audio' && report.type != 'media-source') {
+      return null;
+    }
+
+    if (values.containsKey('audioLevel')) {
+      final val = values['audioLevel'];
+      if (val is num) return val.toDouble().clamp(0.0, 1.0);
+      if (val is String) {
+        final parsed = double.tryParse(val);
+        if (parsed != null) return parsed.clamp(0.0, 1.0);
+      }
+    }
+
+    if (values.containsKey('audioOutputLevel')) {
+      final val = values['audioOutputLevel'];
+      final numVal = val is num ? val.toDouble() : double.tryParse(val.toString());
+      if (numVal != null) return (numVal / 32767.0).clamp(0.0, 1.0);
+    }
+
+    if (values.containsKey('audioInputLevel')) {
+      final val = values['audioInputLevel'];
+      final numVal = val is num ? val.toDouble() : double.tryParse(val.toString());
+      if (numVal != null) return (numVal / 32767.0).clamp(0.0, 1.0);
+    }
+
+    return null;
+  }
+
+  // ── Offer / Answer (Perfect Negotiation Pattern) ─────────────────────────
 
   Future<void> _createOffer(String peerId) async {
     try {
+      _makingOffer[peerId] = true;
       final pc = await _createPeerConnectionForPeer(peerId);
       final offer = await pc.createOffer({
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': _isVideoCall,
       });
-      await pc.setLocalDescription(offer);
+      // A freshly-created peer connection reports signalingState as null,
+      // which is functionally equivalent to "stable". Allow both.
+      if (pc.signalingState != null &&
+          pc.signalingState != RTCSignalingState.RTCSignalingStateStable) {
+        debugPrint(
+          '[WebRTC] Signaling state not stable (${pc.signalingState}) - skipping offer creation for $peerId',
+        );
+        return;
+      }
+      final optimizedSdp = _optimizeSdp(
+        offer.sdp ?? '',
+        peerCount: _peerConnections.length,
+      );
+      final optimizedOffer = RTCSessionDescription(optimizedSdp, offer.type);
+      await pc.setLocalDescription(optimizedOffer);
 
       _socket?.emit('webrtc:offer', {
         'roomId': _currentRoomId,
         'to': peerId,
-        'sdp': offer.toMap(),
+        'sdp': optimizedOffer.toMap(),
       });
       debugPrint('[WebRTC] Sent offer to peer $peerId');
+      _updateAdaptiveBitrates();
     } catch (e) {
       debugPrint('[WebRTC] Error creating offer for $peerId: $e');
+    } finally {
+      _makingOffer[peerId] = false;
     }
   }
 
@@ -549,6 +822,24 @@ class WebRTCCallService extends ChangeNotifier {
   ) async {
     try {
       final pc = await _createPeerConnectionForPeer(peerId);
+
+      // Deterministic role assignment:
+      // Larger ID is polite (accepts offer), smaller ID is impolite (initiator priority).
+      final isPolite =
+          _currentUserId != null && _currentUserId!.compareTo(peerId) > 0;
+      // A freshly-created peer connection reports signalingState as null,
+      // which is functionally equivalent to "stable". Treat both as non-colliding.
+      final signalingStable = pc.signalingState == null ||
+          pc.signalingState == RTCSignalingState.RTCSignalingStateStable;
+      final offerCollision = (_makingOffer[peerId] == true) || !signalingStable;
+
+      if (offerCollision && !isPolite) {
+        debugPrint(
+          '[WebRTC] Glare collision detected: Impolite peer ignoring offer from $peerId',
+        );
+        return;
+      }
+
       final description =
           RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
       await pc.setRemoteDescription(description);
@@ -557,16 +848,22 @@ class WebRTCCallService extends ChangeNotifier {
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': _isVideoCall,
       });
-      await pc.setLocalDescription(answer);
+      final optimizedSdp = _optimizeSdp(
+        answer.sdp ?? '',
+        peerCount: _peerConnections.length,
+      );
+      final optimizedAnswer = RTCSessionDescription(optimizedSdp, answer.type);
+      await pc.setLocalDescription(optimizedAnswer);
 
       _socket?.emit('webrtc:answer', {
         'roomId': _currentRoomId,
         'to': peerId,
-        'sdp': answer.toMap(),
+        'sdp': optimizedAnswer.toMap(),
       });
       debugPrint('[WebRTC] Sent answer to peer $peerId');
 
       await _drainPendingCandidates(peerId);
+      _updateAdaptiveBitrates();
     } catch (e) {
       debugPrint('[WebRTC] Error handling offer from $peerId: $e');
     }
@@ -579,6 +876,7 @@ class WebRTCCallService extends ChangeNotifier {
     pc?.close();
     pc?.dispose();
     _pendingCandidates.remove(peerId);
+    _makingOffer.remove(peerId);
 
     final renderer = remoteRenderers.remove(peerId);
     if (renderer != null) {
@@ -603,6 +901,7 @@ class WebRTCCallService extends ChangeNotifier {
       remoteRenderer.srcObject = null;
     }
     _safeNotify();
+    _updateAdaptiveBitrates();
   }
 
   // ── Call controls ─────────────────────────────────────────────────────────
@@ -652,6 +951,7 @@ class WebRTCCallService extends ChangeNotifier {
 
   Future<void> endCall() async {
     if (_callState == CallState.ended) return;
+    _stopSpeakerStatsMonitor();
 
     if (_currentRoomId != null) {
       _socket?.emit('call:end', {
@@ -735,6 +1035,7 @@ class WebRTCCallService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _stopSpeakerStatsMonitor();
     removeSocketListeners();
     _pendingCandidates.clear();
 
