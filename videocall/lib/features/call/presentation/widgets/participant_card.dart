@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/services/webrtc_call_service.dart';
 import 'signal_indicator.dart';
 import 'voice_wave_indicator.dart';
 
@@ -12,19 +13,24 @@ class ParticipantCard extends StatelessWidget {
   final int signalStrength;
   final bool isSpeaking;
   final double audioLevel;
+  final NetworkQuality? networkQuality;
 
   const ParticipantCard({
     super.key,
     required this.name,
     required this.initials,
     required this.avatarColor,
-    this.signalStrength = 3,
+    this.signalStrength = 4,
     this.isSpeaking = false,
     this.audioLevel = 0.0,
+    this.networkQuality,
   });
 
   @override
   Widget build(BuildContext context) {
+    final effectiveStrength = networkQuality?.bars ?? signalStrength;
+    final isPoor = networkQuality?.isPoor ?? (effectiveStrength <= 1);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -35,7 +41,9 @@ class ParticipantCard extends StatelessWidget {
         border: Border.all(
           color: isSpeaking
               ? const Color(0xFF10B981)
-              : const Color(0xFFE0EAE2).withValues(alpha: 0.6),
+              : (isPoor
+                  ? const Color(0xFFFCA5A5)
+                  : const Color(0xFFE0EAE2).withValues(alpha: 0.6)),
           width: isSpeaking ? 1.5 : 1.0,
         ),
         boxShadow: [
@@ -116,10 +124,35 @@ class ParticipantCard extends StatelessWidget {
               ],
               const SizedBox(width: 4),
               SignalIndicator(
-                strength: signalStrength,
+                strength: effectiveStrength,
                 barWidth: 2.5,
                 maxBarHeight: 11,
+                tooltip: networkQuality?.summaryText,
               ),
+              if (isPoor) ...[
+                const SizedBox(width: 4),
+                Tooltip(
+                  message: networkQuality != null
+                      ? 'Poor network (Loss: ${networkQuality!.packetLossPercent}%, RTT: ${networkQuality!.rttMs.toStringAsFixed(0)}ms)'
+                      : 'Poor network connection',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFEF4444), width: 0.8),
+                    ),
+                    child: const Text(
+                      'POOR',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],

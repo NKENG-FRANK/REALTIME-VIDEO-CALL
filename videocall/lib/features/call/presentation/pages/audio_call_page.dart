@@ -214,7 +214,11 @@ class _AudioCallPageState extends State<AudioCallPage>
             ),
           ),
           const SizedBox(width: 8),
-          const SignalIndicator(strength: 3, showLabel: true),
+          SignalIndicator(
+            strength: _callService.localNetworkQuality.bars,
+            showLabel: true,
+            tooltip: _callService.localNetworkQuality.summaryText,
+          ),
         ],
       ),
     );
@@ -230,6 +234,9 @@ class _AudioCallPageState extends State<AudioCallPage>
   }
 
   Widget _buildParticipantSidebar() {
+    final remoteEntries = _callService.remoteRenderers.entries.toList();
+    final firstRemotePeerId = remoteEntries.isNotEmpty ? remoteEntries.first.key : '';
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -253,7 +260,8 @@ class _AudioCallPageState extends State<AudioCallPage>
             name: 'You (Local)',
             initials: 'ME',
             avatarColor: AppColors.primary,
-            signalStrength: 3,
+            signalStrength: _callService.localNetworkQuality.bars,
+            networkQuality: _callService.localNetworkQuality,
             isSpeaking: _callService.isLocalSpeaking,
             audioLevel: _callService.getAudioLevel('local'),
           ),
@@ -262,7 +270,8 @@ class _AudioCallPageState extends State<AudioCallPage>
             name: widget.contactName,
             initials: _deriveInitials(widget.contactName),
             avatarColor: const Color(0xFF10A47D),
-            signalStrength: 3,
+            signalStrength: _callService.getNetworkQuality(firstRemotePeerId).bars,
+            networkQuality: _callService.getNetworkQuality(firstRemotePeerId),
             isSpeaking: _callService.activeSpeakerId != null &&
                 _callService.activeSpeakerId != 'local',
             audioLevel: _callService.activeSpeakerId != null &&
@@ -277,7 +286,12 @@ class _AudioCallPageState extends State<AudioCallPage>
                 name: 'Member $i',
                 initials: 'M$i',
                 avatarColor: const Color(0xFF8752F4),
-                signalStrength: 3,
+                signalStrength: (i - 1) < remoteEntries.length
+                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key).bars
+                    : 4,
+                networkQuality: (i - 1) < remoteEntries.length
+                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key)
+                    : null,
                 isSpeaking: false,
               ),
             ],
@@ -289,6 +303,8 @@ class _AudioCallPageState extends State<AudioCallPage>
 
   Widget _buildHeroAudioArea() {
     final initials = _deriveInitials(widget.contactName);
+    final remotePeerId = _callService.remoteRenderers.keys.firstOrNull ?? '';
+    final remoteQuality = _callService.getNetworkQuality(remotePeerId);
     final isPeerSpeaking = _callService.activeSpeakerId != null &&
         _callService.activeSpeakerId != 'local';
     final peerAudioLevel = isPeerSpeaking
@@ -405,8 +421,73 @@ class _AudioCallPageState extends State<AudioCallPage>
                 textAlign: TextAlign.center,
               ),
             const SizedBox(height: 8),
-            // Speaking status badge
-            if (isPeerSpeaking || _callService.isLocalSpeaking)
+            // Reconnecting or speaking status badge
+            if (_callService.isAnyReconnecting)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFF59E0B), width: 1.2),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFB45309),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Reconnecting voice stream...',
+                      style: TextStyle(
+                        color: Color(0xFF92400E),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (remoteQuality.isPoor)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFEF4444), width: 1.2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.wifi_off_rounded, color: Color(0xFFDC2626), size: 14),
+                    const SizedBox(width: 6),
+                    Text(
+                      remoteQuality.packetLossPercent > 0
+                          ? 'Poor network • ${remoteQuality.packetLossPercent}% loss'
+                          : 'Poor network • Latency ${remoteQuality.rttMs.toStringAsFixed(0)}ms',
+                      style: const TextStyle(
+                        color: Color(0xFF991B1B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SignalIndicator(
+                      strength: remoteQuality.bars,
+                      maxBars: 4,
+                      barWidth: 2.2,
+                      maxBarHeight: 10,
+                      tooltip: remoteQuality.summaryText,
+                    ),
+                  ],
+                ),
+              )
+            else if (isPeerSpeaking || _callService.isLocalSpeaking)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
@@ -464,7 +545,11 @@ class _AudioCallPageState extends State<AudioCallPage>
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFDCE7DF)),
+                border: Border.all(
+                  color: remoteQuality.isPoor
+                      ? const Color(0xFFFCA5A5)
+                      : const Color(0xFFDCE7DF),
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -472,19 +557,33 @@ class _AudioCallPageState extends State<AudioCallPage>
                   Container(
                     width: 7,
                     height: 7,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.onlineGreen,
+                      color: remoteQuality.isPoor
+                          ? const Color(0xFFEF4444)
+                          : AppColors.onlineGreen,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Connected • HD Voice (Opus 48kHz)',
+                  Text(
+                    remoteQuality.isPoor
+                        ? 'Poor Network • Latency ${remoteQuality.rttMs.toStringAsFixed(0)}ms'
+                        : 'Connected • HD Voice (Opus 48kHz)',
                     style: TextStyle(
-                      color: AppColors.textMuted,
+                      color: remoteQuality.isPoor
+                          ? const Color(0xFFDC2626)
+                          : AppColors.textMuted,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  SignalIndicator(
+                    strength: remoteQuality.bars,
+                    maxBars: 4,
+                    barWidth: 2.2,
+                    maxBarHeight: 11,
+                    tooltip: remoteQuality.summaryText,
                   ),
                 ],
               ),

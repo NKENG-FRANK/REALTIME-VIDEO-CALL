@@ -9,6 +9,32 @@ import 'auth_service.dart';
 
 enum CallState { idle, connecting, connected, ended }
 
+/// Real-time WebRTC network quality metrics & MOS score for a peer.
+class NetworkQuality {
+  final double rttMs;
+  final double jitterMs;
+  final double packetLossPercent;
+  final double mos; // 1.0 to 4.5
+  final int bars; // 1 to 4
+  final String label; // 'Excellent', 'Good', 'Fair', 'Poor'
+  final bool isPoor; // true when packetLossPercent >= 5.0% or bars == 1
+
+  const NetworkQuality({
+    this.rttMs = 0.0,
+    this.jitterMs = 0.0,
+    this.packetLossPercent = 0.0,
+    this.mos = 4.5,
+    this.bars = 4,
+    this.label = 'Excellent',
+    this.isPoor = false,
+  });
+
+  static const NetworkQuality goodDefault = NetworkQuality();
+
+  String get summaryText =>
+      '$bars/4 bars • RTT: ${rttMs.toStringAsFixed(0)}ms • Loss: ${packetLossPercent.toStringAsFixed(1)}% • MOS: ${mos.toStringAsFixed(1)}';
+}
+
 class WebRTCCallService extends ChangeNotifier {
   io.Socket? _socket;
   MediaStream? _localStream;
@@ -60,6 +86,32 @@ class WebRTCCallService extends ChangeNotifier {
   double getAudioLevel(String id) => _audioLevels[id] ?? 0.0;
   bool isSpeaking(String id) => (_audioLevels[id] ?? 0.0) > 0.04;
   bool get isLocalSpeaking => isSpeaking('local');
+
+  // ── Real-Time Network Quality & Signal Strength Monitoring ───────────────
+  final Map<String, NetworkQuality> _networkQualities = {};
+  final Map<String, int> _prevPacketsLost = {};
+  final Map<String, int> _prevPacketsReceived = {};
+  int _networkQualityTick = 0;
+
+  NetworkQuality getNetworkQuality(String peerId) =>
+      _networkQualities[peerId] ?? NetworkQuality.goodDefault;
+
+  NetworkQuality get localNetworkQuality =>
+      _networkQualities['local'] ?? NetworkQuality.goodDefault;
+
+  bool get isAnyPeerNetworkPoor =>
+      _networkQualities.values.any((q) => q.isPoor);
+
+  // ── Network Resilience & ICE Watchdog ─────────────────────────────────────
+  final Map<String, Timer> _iceDisconnectTimers = {};
+  final Map<String, int> _iceRestartAttempts = {};
+  final Set<String> _reconnectingPeers = {};
+  int _videoRefreshEpoch = 0;
+  int get videoRefreshEpoch => _videoRefreshEpoch;
+
+  bool isPeerReconnecting(String peerId) => _reconnectingPeers.contains(peerId);
+  bool get isAnyReconnecting => _reconnectingPeers.isNotEmpty;
+  Set<String> get reconnectingPeers => Set.unmodifiable(_reconnectingPeers);
 
   String get formattedDuration {
     if (_callStartTime == null) return '00:05';
@@ -158,17 +210,33 @@ class WebRTCCallService extends ChangeNotifier {
           .setAuth({'token': userToken})
           .enableForceNew()
           .disableAutoConnect()
-          .setReconnectionAttempts(3)
-          .setReconnectionDelay(500)
+          .setReconnectionAttempts(15)
+          .setReconnectionDelay(1000)
           .build(),
     );
 
     _socket!.onConnect((_) {
       debugPrint('[WebRTC] Connected to Video Calls Socket.io server');
+      if (_currentRoomId != null && _callState == CallState.connected) {
+        debugPrint(
+          '[WebRTC] Socket reconnected during active call - rejoining room $_currentRoomId',
+        );
+        final callType = _isGroupCall
+            ? (_isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO')
+            : (_isVideoCall ? 'DIRECT_VIDEO' : 'DIRECT_AUDIO');
+        _socket!.emit('room:join', {'roomId': _currentRoomId, 'callType': callType});
+        for (final peerId in _peerConnections.keys) {
+          _restartIceForPeer(peerId);
+        }
+      }
     });
 
-    _socket!.onDisconnect((_) {
-      debugPrint('[WebRTC] Disconnected from Video Calls Socket.io server');
+    _socket!.onDisconnect((reason) {
+      debugPrint('[WebRTC] Disconnected from Video Calls Socket.io server: $reason');
+      if (_callState == CallState.connected) {
+        _reconnectingPeers.addAll(_peerConnections.keys);
+        _safeNotify();
+      }
     });
 
     _socket!.on('connect_error', (err) {
@@ -197,11 +265,6 @@ class WebRTCCallService extends ChangeNotifier {
     // ── room:participant_joined ────────────────────────────────────────────
     _socket!.on('room:participant_joined', (data) async {
       debugPrint('[WebRTC] Participant joined: $data');
-      _callState = CallState.connected;
-      _callStartTime = DateTime.now();
-      _safeNotify();
-
-      // Extract the joining peer's ID for targeted offer creation.
       final map =
           data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
       final peerId = _peerIdFromData(
@@ -209,11 +272,37 @@ class WebRTCCallService extends ChangeNotifier {
         fallback: 'peer_${_peerConnections.length}',
       );
 
-      // Create a dedicated offer for this specific peer.
+      // If we already have a peer connection for this peer (e.g. they reconnected
+      // after a network drop), clear the reconnecting banner and do an ICE restart
+      // on the EXISTING connection — do NOT create a duplicate peer connection.
+      if (_peerConnections.containsKey(peerId)) {
+        debugPrint(
+          '[WebRTC] Peer $peerId re-joined — existing connection found. '
+          'Clearing reconnecting state & triggering ICE restart.',
+        );
+        // Cancel any pending disconnect timer since the peer is back
+        _iceDisconnectTimers[peerId]?.cancel();
+        _iceDisconnectTimers.remove(peerId);
+        _iceRestartAttempts[peerId] = 0;
+        _reconnectingPeers.remove(peerId);
+        _safeNotify();
+        // Restart ICE to pick up fresh candidates from the reconnected peer
+        if (_isFirstPeer || _peerConnections.length == 1) {
+          await _restartIceForPeer(peerId);
+        }
+        return;
+      }
+
+      _callState = CallState.connected;
+      _callStartTime = DateTime.now();
+      _safeNotify();
+
+      // Fresh peer: create a dedicated offer for this specific peer.
       if (_isFirstPeer || _peerConnections.isEmpty || _isGroupCall) {
         await _createOffer(peerId);
       }
     });
+
 
     // ── webrtc:offer ──────────────────────────────────────────────────────
     _socket!.on('webrtc:offer', (data) async {
@@ -225,11 +314,12 @@ class WebRTCCallService extends ChangeNotifier {
       }
       debugPrint('[WebRTC] Received WebRTC offer');
       final sdpMap = map['sdp'] as Map<String, dynamic>;
+      final isIceRestart = map['isIceRestart'] == true;
       final peerId = _peerIdFromData(
         map,
         fallback: 'peer_${_peerConnections.length}',
       );
-      await _handleOffer(sdpMap, peerId);
+      await _handleOffer(sdpMap, peerId, isIceRestart: isIceRestart);
     });
 
     // ── webrtc:answer ─────────────────────────────────────────────────────
@@ -257,6 +347,7 @@ class WebRTCCallService extends ChangeNotifier {
           await fallbackPc.setRemoteDescription(description);
           final fallbackKey = _peerConnections.keys.first;
           await _drainPendingCandidates(fallbackKey);
+          await _rebindAndRestoreVideo(fallbackKey);
           _updateAdaptiveBitrates();
         }
         return;
@@ -265,6 +356,7 @@ class WebRTCCallService extends ChangeNotifier {
           RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
       await pc.setRemoteDescription(description);
       await _drainPendingCandidates(peerId);
+      await _rebindAndRestoreVideo(peerId);
       _updateAdaptiveBitrates();
     });
 
@@ -306,6 +398,44 @@ class WebRTCCallService extends ChangeNotifier {
       // Buffer until remote description is set.
       debugPrint('[WebRTC] Buffering ICE candidate for peer $peerId');
       _pendingCandidates.putIfAbsent(peerId, () => []).add(candidate);
+    });
+
+    // ── webrtc:request_keyframe ───────────────────────────────────────────
+    _socket!.on('webrtc:request_keyframe', (data) async {
+      final map = data as Map<String, dynamic>;
+      final targetUserId = map['targetUserId'] as String?;
+      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+        return;
+      }
+      final peerId = _peerIdFromData(
+        map,
+        fallback: _peerConnections.keys.firstOrNull ?? '',
+      );
+      debugPrint('[WebRTC] Keyframe request received from $peerId — kickstart sender + recreate renderer');
+      // Kickstart our outgoing encoder (IDR keyframe to remote).
+      await _kickstartVideoSender(peerId);
+      // Also recreate our local renderer for the remote stream to unfreeze display.
+      // Skip echo-back (no outbound request_keyframe emit) to avoid infinite loop.
+      final stream = _remoteStreams[peerId];
+      if (stream != null) {
+        for (final track in stream.getVideoTracks()) {
+          track.enabled = true;
+        }
+        final freshPeerRenderer = await _recreateRenderer(
+          old: remoteRenderers[peerId],
+          stream: stream,
+        );
+        remoteRenderers[peerId] = freshPeerRenderer;
+        if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
+          await _recreateRenderer(
+            old: remoteRenderer,
+            stream: stream,
+            reuse: remoteRenderer,
+          );
+        }
+      }
+      _videoRefreshEpoch++;
+      _safeNotify();
     });
 
     // ── call:ended ────────────────────────────────────────────────────────
@@ -479,7 +609,6 @@ class WebRTCCallService extends ChangeNotifier {
       for (final track in _localStream!.getTracks()) {
         await pc.addTrack(track, _localStream!);
       }
-      await _updateAdaptiveBitrates();
     }
 
     // Handle incoming remote tracks from this peer.
@@ -530,8 +659,38 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] ICE Connection State for $peerId: $state');
       if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
           state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _iceDisconnectTimers[peerId]?.cancel();
+        _iceDisconnectTimers.remove(peerId);
+        _iceRestartAttempts[peerId] = 0;
+        if (_reconnectingPeers.remove(peerId)) {
+          _safeNotify();
+        }
         _startSpeakerStatsMonitor();
+        _rebindAndRestoreVideo(peerId);
+        // Staggered second pass to resolve any packet-timing or keyframe arrival delay
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (_peerConnections.containsKey(peerId)) {
+            _rebindAndRestoreVideo(peerId);
+          }
+        });
         _updateAdaptiveBitrates();
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+        // Transient disconnect: wait 3.5s before triggering ICE restart
+        _iceDisconnectTimers[peerId]?.cancel();
+        _iceDisconnectTimers[peerId] = Timer(const Duration(milliseconds: 3500), () {
+          debugPrint('[WebRTC] ICE disconnected >3.5s for $peerId — auto-restarting ICE');
+          _reconnectingPeers.add(peerId);
+          _safeNotify();
+          _restartIceForPeer(peerId);
+        });
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        // Immediate failure: initiate ICE restart right away
+        _iceDisconnectTimers[peerId]?.cancel();
+        _iceDisconnectTimers.remove(peerId);
+        debugPrint('[WebRTC] ICE failed for $peerId — initiating immediate ICE restart');
+        _reconnectingPeers.add(peerId);
+        _safeNotify();
+        _restartIceForPeer(peerId);
       }
     };
 
@@ -658,8 +817,10 @@ class WebRTCCallService extends ChangeNotifier {
       String? topSpeakerId;
       double topLevel = 0.04;
       bool hasChanges = false;
+      _networkQualityTick++;
+      final bool shouldUpdateQuality = (_networkQualityTick % 3 == 0); // approx every 1.05s
 
-      // 1. Remote peers audio levels
+      // 1. Remote peers audio levels & network stats
       for (final entry in _peerConnections.entries) {
         final peerId = entry.key;
         final pc = entry.value;
@@ -678,6 +839,13 @@ class WebRTCCallService extends ChangeNotifier {
               if ((prev - smoothed).abs() > 0.02) {
                 hasChanges = true;
               }
+            }
+          }
+
+          if (shouldUpdateQuality) {
+            final qualityChanged = _processPeerNetworkQuality(peerId, stats);
+            if (qualityChanged) {
+              hasChanges = true;
             }
           }
         } catch (_) {}
@@ -743,6 +911,10 @@ class WebRTCCallService extends ChangeNotifier {
     _audioLevels.clear();
     _activeSpeakerId = null;
     _lastSpeechTime = null;
+    _networkQualities.clear();
+    _prevPacketsLost.clear();
+    _prevPacketsReceived.clear();
+    _networkQualityTick = 0;
   }
 
   double? _extractAudioLevel(StatsReport report) {
@@ -776,15 +948,327 @@ class WebRTCCallService extends ChangeNotifier {
     return null;
   }
 
+  bool _processPeerNetworkQuality(String peerId, List<StatsReport> reports) {
+    double? rtt;
+    double? jitter;
+    int currentPacketsLost = 0;
+    int currentPacketsReceived = 0;
+    bool hasRtp = false;
+
+    for (final report in reports) {
+      final values = report.values;
+
+      // 1. Candidate-pair for Round Trip Time (RTT)
+      if (report.type == 'candidate-pair') {
+        final state = values['state'];
+        final nominated = values['nominated'];
+        final selected = values['selected'];
+        final isSelected = state == 'succeeded' ||
+            nominated == true ||
+            nominated == 'true' ||
+            selected == true ||
+            selected == 'true';
+
+        if (isSelected || values.containsKey('currentRoundTripTime')) {
+          final rttVal = values['currentRoundTripTime'] ?? values['roundTripTime'];
+          if (rttVal != null) {
+            final parsed = _numToDouble(rttVal);
+            if (parsed != null && parsed > 0) {
+              rtt = parsed < 5.0 ? parsed * 1000.0 : parsed;
+            }
+          }
+        }
+      }
+
+      // 2. Inbound-RTP for Jitter & Packet Loss
+      if (report.type == 'inbound-rtp') {
+        hasRtp = true;
+        if (values.containsKey('jitter')) {
+          final jVal = _numToDouble(values['jitter']);
+          if (jVal != null && jVal > 0) {
+            final jMs = jVal < 5.0 ? jVal * 1000.0 : jVal;
+            if (jitter == null || jMs > jitter) {
+              jitter = jMs;
+            }
+          }
+        }
+
+        if (values.containsKey('packetsLost')) {
+          final pl = _numToInt(values['packetsLost']);
+          if (pl != null && pl >= 0) {
+            currentPacketsLost += pl;
+          }
+        }
+
+        if (values.containsKey('packetsReceived')) {
+          final pr = _numToInt(values['packetsReceived']);
+          if (pr != null && pr >= 0) {
+            currentPacketsReceived += pr;
+          }
+        }
+      }
+
+      // 3. Remote-Inbound-RTP (RTCP receiver report fallback)
+      if (report.type == 'remote-inbound-rtp') {
+        if (rtt == null && values.containsKey('roundTripTime')) {
+          final rVal = _numToDouble(values['roundTripTime']);
+          if (rVal != null && rVal > 0) {
+            rtt = rVal < 5.0 ? rVal * 1000.0 : rVal;
+          }
+        }
+        if (jitter == null && values.containsKey('jitter')) {
+          final jVal = _numToDouble(values['jitter']);
+          if (jVal != null && jVal > 0) {
+            jitter = jVal < 5.0 ? jVal * 1000.0 : jVal;
+          }
+        }
+      }
+    }
+
+    // Packet loss calculation over window delta
+    double lossPercent = 0.0;
+    if (hasRtp) {
+      final prevLost = _prevPacketsLost[peerId];
+      final prevRecv = _prevPacketsReceived[peerId];
+
+      if (prevLost != null && prevRecv != null) {
+        final deltaLost = currentPacketsLost - prevLost;
+        final deltaRecv = currentPacketsReceived - prevRecv;
+        final deltaTotal = deltaLost + deltaRecv;
+
+        if (deltaTotal > 0 && deltaLost >= 0) {
+          final rawLoss = (deltaLost / deltaTotal) * 100.0;
+          final prevLoss = _networkQualities[peerId]?.packetLossPercent ?? 0.0;
+          lossPercent = (prevLoss * 0.4) + (rawLoss.clamp(0.0, 100.0) * 0.6);
+        } else {
+          final prevLoss = _networkQualities[peerId]?.packetLossPercent ?? 0.0;
+          lossPercent = prevLoss * 0.5; // decay
+        }
+      }
+
+      _prevPacketsLost[peerId] = currentPacketsLost;
+      _prevPacketsReceived[peerId] = currentPacketsReceived;
+    }
+
+    final effectiveRtt = rtt ?? _networkQualities[peerId]?.rttMs ?? 35.0;
+    final effectiveJitter = jitter ?? _networkQualities[peerId]?.jitterMs ?? 8.0;
+
+    // ITU-T G.107 standard E-model Mean Opinion Score (MOS)
+    final effectiveDelay = (effectiveRtt / 2.0) + (effectiveJitter * 2.0) + 10.0;
+    final delayImpairment = effectiveDelay > 100.0 ? (effectiveDelay - 100.0) / 35.0 : 0.0;
+    final lossImpairment = lossPercent * 2.5;
+
+    double rFactor = 94.2 - delayImpairment - lossImpairment;
+    rFactor = rFactor.clamp(0.0, 100.0);
+
+    double mos = 1.0;
+    if (rFactor >= 100.0) {
+      mos = 4.5;
+    } else if (rFactor > 0.0) {
+      mos = 1.0 + 0.035 * rFactor + rFactor * (rFactor - 60.0) * (100.0 - rFactor) * 7.0e-6;
+    }
+    mos = mos.clamp(1.0, 4.5);
+
+    int bars;
+    String label;
+    if (lossPercent > 10.0 || effectiveRtt > 450.0 || effectiveJitter > 120.0 || mos < 2.5) {
+      bars = 1;
+      label = 'Poor';
+    } else if (lossPercent > 5.0 || effectiveRtt > 280.0 || effectiveJitter > 70.0 || mos < 3.4) {
+      bars = 2;
+      label = 'Fair';
+    } else if (lossPercent > 2.0 || effectiveRtt > 160.0 || effectiveJitter > 35.0 || mos < 4.0) {
+      bars = 3;
+      label = 'Good';
+    } else {
+      bars = 4;
+      label = 'Excellent';
+    }
+
+    final isPoor = bars == 1 || lossPercent >= 5.0;
+
+    final prevQuality = _networkQualities[peerId];
+    final updatedQuality = NetworkQuality(
+      rttMs: double.parse(effectiveRtt.toStringAsFixed(1)),
+      jitterMs: double.parse(effectiveJitter.toStringAsFixed(1)),
+      packetLossPercent: double.parse(lossPercent.toStringAsFixed(1)),
+      mos: double.parse(mos.toStringAsFixed(2)),
+      bars: bars,
+      label: label,
+      isPoor: isPoor,
+    );
+
+    _networkQualities[peerId] = updatedQuality;
+
+    // Update local network quality (derived from peer connection health)
+    NetworkQuality worst = updatedQuality;
+    for (final entry in _networkQualities.entries) {
+      if (entry.key != 'local' && entry.value.bars < worst.bars) {
+        worst = entry.value;
+      }
+    }
+    _networkQualities['local'] = worst;
+
+    return prevQuality?.bars != bars || prevQuality?.isPoor != isPoor;
+  }
+
+  static double? _numToDouble(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString());
+  }
+
+  static int? _numToInt(dynamic val) {
+    if (val == null) return null;
+    if (val is num) return val.toInt();
+    return int.tryParse(val.toString());
+  }
+
+  // ── Network Resilience & ICE Restart ─────────────────────────────────────
+
+  /// Restores video pipeline after ICE reconnect, renegotiation, or track stall.
+  /// Fully restores video after ICE reconnection:
+  /// 1. Kickstarts sender video encoder via replaceTrack to force an immediate IDR keyframe
+  /// 2. Unmutes and enables remote video tracks
+  /// 3. Recreates the RTCVideoRenderer (dispose + initialize) to flush the frozen native texture
+  /// 4. Increments videoRefreshEpoch to force UI widget to rebuild with new renderer
+  /// 5. Requests remote peer to also transmit a fresh keyframe
+  Future<void> _rebindAndRestoreVideo(String peerId) async {
+    debugPrint('[WebRTC] 🔄 Rebinding & restoring video stream for peer: $peerId');
+
+    // 1. Force local video sender to produce a fresh IDR keyframe
+    await _kickstartVideoSender(peerId);
+
+    // 2. Ensure remote stream & video tracks are enabled
+    final stream = _remoteStreams[peerId];
+    if (stream != null) {
+      for (final track in stream.getVideoTracks()) {
+        track.enabled = true;
+      }
+
+      // 3. Recreate per-peer renderer — the only reliable fix for a frozen native texture.
+      //    Setting srcObject=null then srcObject=stream is NOT enough when the stream object
+      //    reference hasn't changed; the platform layer skips re-initialization.
+      //    We must dispose and re-initialize to obtain a new textureId.
+      final freshPeerRenderer = await _recreateRenderer(
+        old: remoteRenderers[peerId],
+        stream: stream,
+      );
+      remoteRenderers[peerId] = freshPeerRenderer;
+
+      // 4. Recreate main renderer (for 1-on-1 mode)
+      if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
+        final freshMain = await _recreateRenderer(
+          old: remoteRenderer,
+          stream: stream,
+          reuse: remoteRenderer, // reuse the field reference but re-initialize it in-place
+        );
+        if (!identical(freshMain, remoteRenderer)) {
+          // If a new instance was created (old was null or disposed), re-init the shared field
+          remoteRenderer.srcObject = stream;
+        }
+      }
+    }
+
+    _videoRefreshEpoch++;
+    _safeNotify();
+
+    // 5. Ask remote peer over socket to also transmit a fresh keyframe
+    if (_currentRoomId != null) {
+      _socket?.emit('webrtc:request_keyframe', {
+        'roomId': _currentRoomId,
+        'to': peerId,
+      });
+    }
+  }
+
+  /// Disposes [old] renderer and returns a fresh initialized renderer with [stream] attached.
+  /// If [reuse] is provided, re-initializes it in-place (for named fields like remoteRenderer)
+  /// and returns it; otherwise creates and returns a brand-new RTCVideoRenderer.
+  Future<RTCVideoRenderer> _recreateRenderer({
+    RTCVideoRenderer? old,
+    required MediaStream stream,
+    RTCVideoRenderer? reuse,
+  }) async {
+    if (reuse != null) {
+      // In-place re-init for a named field we can't replace
+      try { reuse.srcObject = null; } catch (_) {}
+      try { await reuse.initialize(); } catch (_) {}
+      reuse.srcObject = stream;
+      return reuse;
+    }
+    // For map-stored renderers: dispose old, create fresh one
+    try { old?.srcObject = null; } catch (_) {}
+    try { await old?.dispose(); } catch (_) {}
+    final fresh = RTCVideoRenderer();
+    await fresh.initialize();
+    fresh.srcObject = stream;
+    return fresh;
+  }
+
+  /// Forces libwebrtc video encoder to re-initialize and generate an IDR keyframe
+  Future<void> _kickstartVideoSender(String peerId) async {
+    final pc = _peerConnections[peerId];
+    if (pc == null || _localStream == null || _isVideoOff) return;
+
+    final localVideoTrack = _localStream!.getVideoTracks().firstOrNull;
+    if (localVideoTrack == null) return;
+
+    try {
+      localVideoTrack.enabled = true;
+      final senders = await pc.getSenders();
+      for (final sender in senders) {
+        if (sender.track?.kind == 'video') {
+          await sender.replaceTrack(localVideoTrack);
+          debugPrint('[WebRTC] 🎬 replaceTrack invoked on video sender for $peerId (IDR keyframe forced)');
+        }
+      }
+    } catch (e) {
+      debugPrint('[WebRTC] Note on kickstarting video sender for $peerId: $e');
+    }
+  }
+
+  /// Attempts automatic ICE restart on an unstable or broken peer connection
+  Future<void> _restartIceForPeer(String peerId) async {
+    final pc = _peerConnections[peerId];
+    if (pc == null) return;
+
+    final attempts = (_iceRestartAttempts[peerId] ?? 0) + 1;
+    _iceRestartAttempts[peerId] = attempts;
+
+    if (attempts > 3) {
+      debugPrint('[WebRTC] Max ICE restart attempts reached (3) for $peerId');
+      _reconnectingPeers.remove(peerId);
+      _safeNotify();
+      return;
+    }
+
+    debugPrint('[WebRTC] 🔄 Restarting ICE for $peerId (Attempt $attempts/3)...');
+
+    try {
+      try {
+        await pc.restartIce();
+      } catch (e) {
+        debugPrint('[WebRTC] pc.restartIce() call note: $e');
+      }
+
+      await _createOffer(peerId, isIceRestart: true);
+      await _kickstartVideoSender(peerId);
+    } catch (e) {
+      debugPrint('[WebRTC] Error during ICE restart for $peerId: $e');
+    }
+  }
+
   // ── Offer / Answer (Perfect Negotiation Pattern) ─────────────────────────
 
-  Future<void> _createOffer(String peerId) async {
+  Future<void> _createOffer(String peerId, {bool isIceRestart = false}) async {
     try {
       _makingOffer[peerId] = true;
       final pc = await _createPeerConnectionForPeer(peerId);
       final offer = await pc.createOffer({
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': _isVideoCall,
+        if (isIceRestart) 'iceRestart': true,
       });
       // A freshly-created peer connection reports signalingState as null,
       // which is functionally equivalent to "stable". Allow both.
@@ -806,9 +1290,11 @@ class WebRTCCallService extends ChangeNotifier {
         'roomId': _currentRoomId,
         'to': peerId,
         'sdp': optimizedOffer.toMap(),
+        if (isIceRestart) 'isIceRestart': true,
       });
-      debugPrint('[WebRTC] Sent offer to peer $peerId');
-      _updateAdaptiveBitrates();
+      debugPrint(
+        '[WebRTC] Sent ${isIceRestart ? "ICE restart offer" : "offer"} to peer $peerId',
+      );
     } catch (e) {
       debugPrint('[WebRTC] Error creating offer for $peerId: $e');
     } finally {
@@ -818,8 +1304,9 @@ class WebRTCCallService extends ChangeNotifier {
 
   Future<void> _handleOffer(
     Map<String, dynamic> sdpMap,
-    String peerId,
-  ) async {
+    String peerId, {
+    bool isIceRestart = false,
+  }) async {
     try {
       final pc = await _createPeerConnectionForPeer(peerId);
 
@@ -860,9 +1347,30 @@ class WebRTCCallService extends ChangeNotifier {
         'to': peerId,
         'sdp': optimizedAnswer.toMap(),
       });
-      debugPrint('[WebRTC] Sent answer to peer $peerId');
+      debugPrint('[WebRTC] Sent answer to peer $peerId${isIceRestart ? " (ICE restart)" : ""}');
 
       await _drainPendingCandidates(peerId);
+
+      if (isIceRestart) {
+        // For ICE restart offers, Device B (the non-disconnecting peer) may never see
+        // an ICE state transition back to "connected" because it was always connected.
+        // Schedule delayed video restoration after ICE has had time to use new candidates.
+        debugPrint('[WebRTC] ICE restart answer sent — scheduling delayed video restore for $peerId');
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (_peerConnections.containsKey(peerId)) {
+            debugPrint('[WebRTC] 🔄 Delayed restore (1200ms) for ICE restart peer: $peerId');
+            _rebindAndRestoreVideo(peerId);
+          }
+        });
+        Future.delayed(const Duration(milliseconds: 2500), () {
+          if (_peerConnections.containsKey(peerId)) {
+            debugPrint('[WebRTC] 🔄 Delayed restore (2500ms) for ICE restart peer: $peerId');
+            _rebindAndRestoreVideo(peerId);
+          }
+        });
+      } else {
+        await _rebindAndRestoreVideo(peerId);
+      }
       _updateAdaptiveBitrates();
     } catch (e) {
       debugPrint('[WebRTC] Error handling offer from $peerId: $e');
@@ -877,6 +1385,12 @@ class WebRTCCallService extends ChangeNotifier {
     pc?.dispose();
     _pendingCandidates.remove(peerId);
     _makingOffer.remove(peerId);
+    _iceDisconnectTimers.remove(peerId)?.cancel();
+    _iceRestartAttempts.remove(peerId);
+    _reconnectingPeers.remove(peerId);
+    _networkQualities.remove(peerId);
+    _prevPacketsLost.remove(peerId);
+    _prevPacketsReceived.remove(peerId);
 
     final renderer = remoteRenderers.remove(peerId);
     if (renderer != null) {
@@ -952,6 +1466,13 @@ class WebRTCCallService extends ChangeNotifier {
   Future<void> endCall() async {
     if (_callState == CallState.ended) return;
     _stopSpeakerStatsMonitor();
+
+    for (final timer in _iceDisconnectTimers.values) {
+      timer.cancel();
+    }
+    _iceDisconnectTimers.clear();
+    _iceRestartAttempts.clear();
+    _reconnectingPeers.clear();
 
     if (_currentRoomId != null) {
       _socket?.emit('call:end', {
@@ -1036,6 +1557,14 @@ class WebRTCCallService extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _stopSpeakerStatsMonitor();
+
+    for (final timer in _iceDisconnectTimers.values) {
+      timer.cancel();
+    }
+    _iceDisconnectTimers.clear();
+    _iceRestartAttempts.clear();
+    _reconnectingPeers.clear();
+
     removeSocketListeners();
     _pendingCandidates.clear();
 
@@ -1099,6 +1628,7 @@ class WebRTCCallService extends ChangeNotifier {
       ..off('webrtc:offer')
       ..off('webrtc:answer')
       ..off('webrtc:candidate')
+      ..off('webrtc:request_keyframe')
       ..off('call:ended')
       ..off('room:participant_left')
       ..off('error');

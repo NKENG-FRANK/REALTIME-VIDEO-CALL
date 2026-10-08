@@ -28,6 +28,10 @@ class AppColors {
   static const Color signalStrong = Color(0xFF3A6B1F);
   static const Color signalMedium = Color(0xFF6B9B4F);
   static const Color signalWeak = Color(0xFFB0C9A0);
+  static const Color signalExcellent = Color(0xFF10B981); // 4 bars: Emerald Green
+  static const Color signalGood = Color(0xFF84CC16);      // 3 bars: Lime Green
+  static const Color signalFair = Color(0xFFF59E0B);      // 2 bars: Amber / Orange
+  static const Color signalPoor = Color(0xFFEF4444);      // 1 bar: Red
 
   // Call action colors
   static const Color callDecline = Color(0xFFDC3545);
