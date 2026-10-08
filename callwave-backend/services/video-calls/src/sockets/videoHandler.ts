@@ -297,12 +297,15 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── WebRTC Direct Peer-to-Peer Signaling ───────────────────────────────────
 
-  socket.on('webrtc:offer', async (data: { roomId: string; to?: string; sdp: any }) => {
-    const payload = {
+  socket.on('webrtc:offer', async (data: { roomId: string; to?: string; sdp: any; isIceRestart?: boolean }) => {
+    const payload: Record<string, any> = {
       senderUserId: userId,
       targetUserId: data.to,
       sdp: data.sdp,
     };
+    // Forward optional ICE-restart flag so the remote peer can schedule
+    // delayed video restoration correctly (Device B asymmetric reconnect path).
+    if (data.isIceRestart) payload.isIceRestart = true;
     if (data.to) {
       io.to(data.to).emit('webrtc:offer', payload);
     } else {
@@ -333,6 +336,18 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       io.to(data.to).emit('webrtc:candidate', payload);
     } else {
       socket.to(data.roomId).emit('webrtc:candidate', payload);
+    }
+  });
+
+  socket.on('webrtc:request_keyframe', async (data: { roomId: string; to?: string }) => {
+    const payload = {
+      senderUserId: userId,
+      targetUserId: data.to,
+    };
+    if (data.to) {
+      io.to(data.to).emit('webrtc:request_keyframe', payload);
+    } else {
+      socket.to(data.roomId).emit('webrtc:request_keyframe', payload);
     }
   });
 }
