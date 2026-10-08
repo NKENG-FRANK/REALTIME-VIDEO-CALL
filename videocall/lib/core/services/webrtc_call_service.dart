@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart' as sfu;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../config/api_config.dart';
@@ -47,6 +48,17 @@ class WebRTCCallService extends ChangeNotifier {
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
   final Map<String, MediaStream> _remoteStreams = {};
   final Map<String, bool> _makingOffer = {};
+
+  // ── Mediasoup SFU State ──────────────────────────────────────────────────
+  bool _isSfuMode = false;
+  bool get isSfuMode => _isSfuMode;
+
+  sfu.Device? _sfuDevice;
+  sfu.Transport? _sendTransport;
+  sfu.Transport? _recvTransport;
+  sfu.Producer? _audioProducer;
+  sfu.Producer? _videoProducer;
+  final Map<String, List<sfu.Consumer>> _peerConsumers = {};
 
   // ── Renderers (public) ────────────────────────────────────────────────────
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
@@ -247,8 +259,19 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('room:joined', (data) async {
       debugPrint('[WebRTC] Joined room: $data');
       final map = data as Map<String, dynamic>?;
+      final rtpCaps = map?['rtpCapabilities'] as Map?;
       final existingParticipants = map?['participants'] as List?;
 
+      // Auto-enable SFU mode for group calls when router capabilities are provided
+      if (_isGroupCall && rtpCaps != null) {
+        debugPrint('[WebRTC-SFU] Initializing Mediasoup SFU router pipeline for group meeting...');
+        _isSfuMode = true;
+        await _initSfu(rtpCaps, existingParticipants);
+        return;
+      }
+
+      // Existing P2P mesh logic for 1-on-1 calls
+      _isSfuMode = false;
       if (existingParticipants != null && existingParticipants.isNotEmpty) {
         // We are a late joiner – existing participant(s) will send us offers.
         _isFirstPeer = false;
@@ -265,6 +288,10 @@ class WebRTCCallService extends ChangeNotifier {
     // ── room:participant_joined ────────────────────────────────────────────
     _socket!.on('room:participant_joined', (data) async {
       debugPrint('[WebRTC] Participant joined: $data');
+      if (_isSfuMode) {
+        // In SFU mode, media streams arrive via 'room:new_producer' events
+        return;
+      }
       final map =
           data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
       final peerId = _peerIdFromData(
@@ -303,9 +330,37 @@ class WebRTCCallService extends ChangeNotifier {
       }
     });
 
+    // ── room:new_producer (SFU) ───────────────────────────────────────────
+    _socket!.on('room:new_producer', (data) async {
+      debugPrint('[WebRTC-SFU] Received room:new_producer: $data');
+      if (!_isSfuMode) return;
+      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final peerUserId = map['userId']?.toString();
+      final producerId = map['producerId']?.toString();
+      final kind = map['kind']?.toString() ?? 'video';
+      if (peerUserId != null && producerId != null && peerUserId != _currentUserId) {
+        await _consumeProducer(
+          producerId: producerId,
+          peerUserId: peerUserId,
+          kindStr: kind,
+        );
+      }
+    });
+
+    // ── consumer:closed (SFU) ─────────────────────────────────────────────
+    _socket!.on('consumer:closed', (data) {
+      debugPrint('[WebRTC-SFU] Received consumer:closed: $data');
+      if (!_isSfuMode) return;
+      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final consumerId = map['consumerId']?.toString();
+      if (consumerId != null) {
+        _handleSfuConsumerClosed(consumerId);
+      }
+    });
 
     // ── webrtc:offer ──────────────────────────────────────────────────────
     _socket!.on('webrtc:offer', (data) async {
+      if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
       if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
@@ -324,6 +379,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     // ── webrtc:answer ─────────────────────────────────────────────────────
     _socket!.on('webrtc:answer', (data) async {
+      if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
       if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
@@ -362,6 +418,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     // ── webrtc:candidate ──────────────────────────────────────────────────
     _socket!.on('webrtc:candidate', (data) async {
+      if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
       if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
@@ -458,6 +515,14 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Received call:ended payload: $data');
 
       if (_isGroupCall) {
+        if (_isSfuMode) {
+          final targetPeer = endedBy ?? '';
+          if (targetPeer.isNotEmpty) _handleSfuPeerLeft(targetPeer);
+          if (_peerConsumers.isEmpty && _remoteStreams.isEmpty) {
+            endCall();
+          }
+          return;
+        }
         // In group calls, single participant exit does NOT terminate call for everyone.
         if (endedBy != null) {
           debugPrint('[WebRTC] Group call: Participant $endedBy left, removing peer connection...');
@@ -489,6 +554,11 @@ class WebRTCCallService extends ChangeNotifier {
       final peerId = _peerIdFromData(map);
 
       if (_isGroupCall) {
+        if (_isSfuMode) {
+          _handleSfuPeerLeft(peerId);
+          if (_peerConsumers.isEmpty && _remoteStreams.isEmpty) endCall();
+          return;
+        }
         // Close only that peer's connection so the video tile disappears and call continues for others
         _removePeerConnection(peerId);
         if (_peerConnections.isEmpty) endCall();
@@ -579,16 +649,415 @@ class WebRTCCallService extends ChangeNotifier {
         ? (isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO')
         : (isVideoCall ? 'DIRECT_VIDEO' : 'DIRECT_AUDIO');
 
-    debugPrint(
-      '[WebRTC] Emitting room:join for room $roomId (callType: $callType)',
-    );
-    _socket!.emit('room:join', {'roomId': roomId, 'callType': callType});
-
-    // Acquire local media AFTER joining so we don't time out.
+    // Acquire local media first so local tracks are immediately available for SFU produce
     if (isVideoCall) {
       await _initRenderersFuture;
     }
     await startLocalMedia(video: isVideoCall, audio: true);
+
+    debugPrint(
+      '[WebRTC] Emitting room:join for room $roomId (callType: $callType)',
+    );
+    _socket!.emit('room:join', {'roomId': roomId, 'callType': callType});
+  }
+
+  // ── Mediasoup SFU Implementation ─────────────────────────────────────────
+
+  Map<String, dynamic> _sanitizeRtpCapabilities(Map data) {
+    final codecs = (data['codecs'] as List? ?? []).map((c) {
+      final cMap = Map<String, dynamic>.from(c as Map);
+      cMap['rtcpFeedback'] = (cMap['rtcpFeedback'] as List? ?? [])
+          .map((fb) => Map<String, dynamic>.from(fb as Map))
+          .toList();
+      cMap['parameters'] =
+          Map<dynamic, dynamic>.from(cMap['parameters'] as Map? ?? {});
+      return cMap;
+    }).toList();
+
+    final headerExtensions = (data['headerExtensions'] as List? ?? []).map((h) {
+      final hMap = Map<String, dynamic>.from(h as Map);
+      final kindStr = hMap['kind']?.toString() ?? '';
+      if (kindStr != 'audio' && kindStr != 'video' && kindStr != 'data') {
+        hMap['kind'] = 'video';
+      }
+      final dirStr = hMap['direction']?.toString() ?? '';
+      if (dirStr != 'sendrecv' &&
+          dirStr != 'sendonly' &&
+          dirStr != 'recvonly' &&
+          dirStr != 'inactive') {
+        hMap['direction'] = 'sendrecv';
+      }
+      return hMap;
+    }).toList();
+
+    return {
+      'codecs': codecs,
+      'headerExtensions': headerExtensions,
+      'fecMechanisms': data['fecMechanisms'] ?? [],
+    };
+  }
+
+  Future<Map<String, dynamic>?> _emitWithAck(
+    String event,
+    Map<String, dynamic> data, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (_socket == null || !_socket!.connected) return null;
+    final completer = Completer<Map<String, dynamic>?>();
+
+    try {
+      _socket!.emitWithAck(
+        event,
+        data,
+        ack: (response) {
+          if (!completer.isCompleted) {
+            if (response is Map) {
+              if (response['status'] == 'ok' && response['data'] is Map) {
+                completer.complete(Map<String, dynamic>.from(response['data'] as Map));
+              } else {
+                completer.complete(Map<String, dynamic>.from(response));
+              }
+            } else {
+              completer.complete(null);
+            }
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('[WebRTC-SFU] emitWithAck error: $e');
+      if (!completer.isCompleted) completer.complete(null);
+    }
+
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        if (!completer.isCompleted) {
+          debugPrint('[WebRTC-SFU] Timed out waiting for ack on $event');
+          completer.complete(null);
+        }
+        return null;
+      },
+    );
+  }
+
+  Future<void> _initSfu(Map rtpCapsRaw, List? existingParticipants) async {
+    try {
+      final sanitized = _sanitizeRtpCapabilities(rtpCapsRaw);
+      _sfuDevice = sfu.Device();
+      await _sfuDevice!.load(
+        routerRtpCapabilities: sfu.RtpCapabilities.fromMap(sanitized),
+      );
+      debugPrint(
+        '[WebRTC-SFU] Device loaded successfully: video=${_sfuDevice!.canProduce(sfu.RTCRtpMediaType.RTCRtpMediaTypeVideo)}, audio=${_sfuDevice!.canProduce(sfu.RTCRtpMediaType.RTCRtpMediaTypeAudio)}',
+      );
+
+      // Create Send Transport
+      final sendData = await _emitWithAck('transport:create', {
+        'roomId': _currentRoomId,
+        'direction': 'send',
+      });
+      if (sendData == null) {
+        debugPrint('[WebRTC-SFU] Failed to create send transport on server');
+        return;
+      }
+
+      _sendTransport = _sfuDevice!.createSendTransportFromMap(
+        sendData,
+        producerCallback: (producer) {
+          debugPrint('[WebRTC-SFU] Send transport producer registered: ${producer.id}');
+        },
+      );
+
+      _sendTransport!.on('connect', (data) async {
+        debugPrint('[WebRTC-SFU] _sendTransport on(connect)');
+        final callback = data['callback'] as Function?;
+        final errback = data['errback'] as Function?;
+        final dtls = data['dtlsParameters'] as sfu.DtlsParameters?;
+        try {
+          await _emitWithAck('transport:connect', {
+            'roomId': _currentRoomId,
+            'transportId': _sendTransport!.id,
+            'dtlsParameters': dtls?.toMap(),
+            'direction': 'send',
+          });
+          callback?.call();
+        } catch (e) {
+          errback?.call(e);
+        }
+      });
+
+      _sendTransport!.on('produce', (data) async {
+        debugPrint('[WebRTC-SFU] _sendTransport on(produce): kind=${data['kind']}');
+        final callback = data['callback'] as Function?;
+        final errback = data['errback'] as Function?;
+        final rtpParams = data['rtpParameters'] as sfu.RtpParameters?;
+        try {
+          final res = await _emitWithAck('producer:create', {
+            'roomId': _currentRoomId,
+            'kind': data['kind'],
+            'rtpParameters': rtpParams?.toMap(),
+            'appData': data['appData'] ?? {},
+          });
+          final prodId = res?['producerId'] ?? res?['id'];
+          callback?.call(prodId);
+        } catch (e) {
+          errback?.call(e);
+        }
+      });
+
+      // Produce local audio
+      if (_localStream != null) {
+        final audioTrack = _localStream!.getAudioTracks().firstOrNull;
+        if (audioTrack != null &&
+            _sfuDevice!.canProduce(sfu.RTCRtpMediaType.RTCRtpMediaTypeAudio)) {
+          _sendTransport!.produce(
+            track: audioTrack,
+            stream: _localStream!,
+            source: 'mic',
+          );
+        }
+
+        // Produce local video
+        if (_isVideoCall) {
+          final videoTrack = _localStream!.getVideoTracks().firstOrNull;
+          if (videoTrack != null &&
+              _sfuDevice!.canProduce(sfu.RTCRtpMediaType.RTCRtpMediaTypeVideo)) {
+            _sendTransport!.produce(
+              track: videoTrack,
+              stream: _localStream!,
+              source: 'webcam',
+              encodings: [
+                sfu.RtpEncodingParameters(
+                  maxBitrate: 800000,
+                  scaleResolutionDownBy: 1.0,
+                ),
+              ],
+            );
+          }
+        }
+      }
+
+      // Create Recv Transport
+      final recvData = await _emitWithAck('transport:create', {
+        'roomId': _currentRoomId,
+        'direction': 'recv',
+      });
+      if (recvData == null) {
+        debugPrint('[WebRTC-SFU] Failed to create recv transport on server');
+        return;
+      }
+
+      _recvTransport = _sfuDevice!.createRecvTransportFromMap(
+        recvData,
+        consumerCallback: (consumer, accept) async {
+          await _onSfuConsumerCreated(consumer, accept);
+        },
+      );
+
+      _recvTransport!.on('connect', (data) async {
+        debugPrint('[WebRTC-SFU] _recvTransport on(connect)');
+        final callback = data['callback'] as Function?;
+        final errback = data['errback'] as Function?;
+        final dtls = data['dtlsParameters'] as sfu.DtlsParameters?;
+        try {
+          await _emitWithAck('transport:connect', {
+            'roomId': _currentRoomId,
+            'transportId': _recvTransport!.id,
+            'dtlsParameters': dtls?.toMap(),
+            'direction': 'recv',
+          });
+          callback?.call();
+        } catch (e) {
+          errback?.call(e);
+        }
+      });
+
+      _callState = CallState.connected;
+      _callStartTime = DateTime.now();
+      _startSpeakerStatsMonitor();
+      _safeNotify();
+
+      // Consume existing participants in the room
+      if (existingParticipants != null) {
+        for (final p in existingParticipants) {
+          if (p is Map) {
+            final pUserId = p['userId']?.toString();
+            if (pUserId == null || pUserId == _currentUserId) continue;
+
+            final producers = p['producers'] as List?;
+            if (producers != null && producers.isNotEmpty) {
+              for (final prod in producers) {
+                if (prod is Map) {
+                  final prodId =
+                      prod['id']?.toString() ?? prod['producerId']?.toString();
+                  final kind = prod['kind']?.toString() ?? 'video';
+                  if (prodId != null) {
+                    await _consumeProducer(
+                      producerId: prodId,
+                      peerUserId: pUserId,
+                      kindStr: kind,
+                    );
+                  }
+                }
+              }
+            } else {
+              final prodIds = p['producerIds'] as List?;
+              if (prodIds != null) {
+                for (final prodId in prodIds) {
+                  if (prodId != null) {
+                    await _consumeProducer(
+                      producerId: prodId.toString(),
+                      peerUserId: pUserId,
+                      kindStr: 'video',
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[WebRTC-SFU] Error initializing SFU: $e\n$st');
+      // Graceful fallback to P2P mesh
+      _isSfuMode = false;
+      _safeNotify();
+    }
+  }
+
+  Future<void> _consumeProducer({
+    required String producerId,
+    required String peerUserId,
+    required String kindStr,
+  }) async {
+    if (_recvTransport == null || _sfuDevice == null) return;
+
+    try {
+      debugPrint('[WebRTC-SFU] Requesting consume for producer $producerId ($kindStr) from $peerUserId');
+      final res = await _emitWithAck('consumer:create', {
+        'roomId': _currentRoomId,
+        'producerId': producerId,
+        'producerUserId': peerUserId,
+        'rtpCapabilities': _sfuDevice!.rtpCapabilities.toMap(),
+      });
+
+      if (res == null) {
+        debugPrint('[WebRTC-SFU] consumer:create returned null from server');
+        return;
+      }
+
+      final consumerId = res['consumerId']?.toString() ?? res['id']?.toString();
+      final rtpParams = res['rtpParameters'];
+      if (consumerId == null || rtpParams == null) return;
+
+      final kind = kindStr == 'video'
+          ? sfu.RTCRtpMediaType.RTCRtpMediaTypeVideo
+          : sfu.RTCRtpMediaType.RTCRtpMediaTypeAudio;
+
+      _recvTransport!.consume(
+        id: consumerId,
+        producerId: producerId,
+        peerId: peerUserId,
+        kind: kind,
+        rtpParameters: sfu.RtpParameters.fromMap(rtpParams as Map),
+        accept: () {
+          debugPrint('[WebRTC-SFU] Resuming consumer $consumerId on server');
+          _socket?.emit('consumer:resume', {
+            'roomId': _currentRoomId,
+            'consumerId': consumerId,
+          });
+        },
+      );
+    } catch (e) {
+      debugPrint('[WebRTC-SFU] Error consuming producer $producerId: $e');
+    }
+  }
+
+  Future<void> _onSfuConsumerCreated(
+    sfu.Consumer consumer,
+    Function? accept,
+  ) async {
+    final peerId = consumer.peerId ?? 'peer_${_peerConsumers.length}';
+    debugPrint(
+      '[WebRTC-SFU] Consumer created: ${consumer.id}, kind: ${consumer.kind}, peer: $peerId',
+    );
+
+    _peerConsumers.putIfAbsent(peerId, () => []).add(consumer);
+
+    // Stream & track binding
+    MediaStream stream;
+    if (_remoteStreams.containsKey(peerId)) {
+      stream = _remoteStreams[peerId]!;
+      await stream.addTrack(consumer.track);
+    } else {
+      stream = consumer.stream;
+      _remoteStreams[peerId] = stream;
+    }
+
+    if (consumer.kind == 'video') {
+      if (!remoteRenderers.containsKey(peerId)) {
+        final renderer = RTCVideoRenderer();
+        await renderer.initialize();
+        renderer.srcObject = stream;
+        remoteRenderers[peerId] = renderer;
+      } else {
+        remoteRenderers[peerId]!.srcObject = stream;
+      }
+
+      if (_isVideoCall &&
+          (_remoteStreams.length == 1 || remoteRenderer.srcObject == null)) {
+        remoteRenderer.srcObject = stream;
+      }
+    }
+
+    accept?.call();
+    _callState = CallState.connected;
+    _safeNotify();
+  }
+
+  void _handleSfuConsumerClosed(String consumerId) {
+    debugPrint('[WebRTC-SFU] Consumer closed on server: $consumerId');
+    for (final entry in _peerConsumers.entries) {
+      entry.value.removeWhere((c) => c.id == consumerId);
+    }
+    _safeNotify();
+  }
+
+  void _handleSfuPeerLeft(String peerId) {
+    debugPrint('[WebRTC-SFU] Remote peer $peerId left call');
+    final consumers = _peerConsumers.remove(peerId);
+    if (consumers != null) {
+      for (final c in consumers) {
+        try {
+          c.close();
+        } catch (_) {}
+      }
+    }
+
+    final renderer = remoteRenderers.remove(peerId);
+    if (renderer != null) {
+      renderer.srcObject = null;
+      renderer.dispose();
+    }
+
+    final stream = _remoteStreams.remove(peerId);
+    if (stream != null) {
+      for (final t in stream.getTracks()) {
+        t.stop();
+      }
+      stream.dispose();
+    }
+
+    _networkQualities.remove(peerId);
+    _prevPacketsLost.remove(peerId);
+    _prevPacketsReceived.remove(peerId);
+    _audioLevels.remove(peerId);
+
+    if (remoteRenderer.srcObject == stream) {
+      remoteRenderer.srcObject = _remoteStreams.values.firstOrNull;
+    }
+
+    _safeNotify();
   }
 
   // ── Peer connection factory ───────────────────────────────────────────────
@@ -805,7 +1274,10 @@ class WebRTCCallService extends ChangeNotifier {
   void _startSpeakerStatsMonitor() {
     if (_speakerStatsTimer != null) return;
     _speakerStatsTimer = Timer.periodic(const Duration(milliseconds: 350), (_) async {
-      if (_callState != CallState.connected || _peerConnections.isEmpty) {
+      final hasActiveConnections = _isSfuMode
+          ? (_peerConsumers.isNotEmpty || _sendTransport != null)
+          : _peerConnections.isNotEmpty;
+      if (_callState != CallState.connected || !hasActiveConnections) {
         if (_activeSpeakerId != null) {
           _activeSpeakerId = null;
           _audioLevels.clear();
@@ -821,44 +1293,79 @@ class WebRTCCallService extends ChangeNotifier {
       final bool shouldUpdateQuality = (_networkQualityTick % 3 == 0); // approx every 1.05s
 
       // 1. Remote peers audio levels & network stats
-      for (final entry in _peerConnections.entries) {
-        final peerId = entry.key;
-        final pc = entry.value;
-        try {
-          final stats = await pc.getStats();
-          for (final report in stats) {
-            final level = _extractAudioLevel(report);
-            if (level != null) {
-              final prev = _audioLevels[peerId] ?? 0.0;
-              final smoothed = (prev * 0.3) + (level * 0.7);
-              _audioLevels[peerId] = smoothed;
-              if (smoothed > topLevel) {
-                topLevel = smoothed;
-                topSpeakerId = peerId;
+      if (_isSfuMode) {
+        for (final entry in _peerConsumers.entries) {
+          final peerId = entry.key;
+          final consumers = entry.value;
+          for (final c in consumers) {
+            try {
+              final stats = await c.getStats();
+              if (stats is List) {
+                final statReports = stats.whereType<StatsReport>().toList();
+                for (final report in statReports) {
+                  final level = _extractAudioLevel(report);
+                  if (level != null) {
+                    final prev = _audioLevels[peerId] ?? 0.0;
+                    final smoothed = (prev * 0.3) + (level * 0.7);
+                    _audioLevels[peerId] = smoothed;
+                    if (smoothed > topLevel) {
+                      topLevel = smoothed;
+                      topSpeakerId = peerId;
+                    }
+                    if ((prev - smoothed).abs() > 0.02) {
+                      hasChanges = true;
+                    }
+                  }
+                }
+                if (shouldUpdateQuality && statReports.isNotEmpty) {
+                  final qualityChanged = _processPeerNetworkQuality(peerId, statReports);
+                  if (qualityChanged) {
+                    hasChanges = true;
+                  }
+                }
               }
-              if ((prev - smoothed).abs() > 0.02) {
+            } catch (_) {}
+          }
+        }
+      } else {
+        for (final entry in _peerConnections.entries) {
+          final peerId = entry.key;
+          final pc = entry.value;
+          try {
+            final stats = await pc.getStats();
+            for (final report in stats) {
+              final level = _extractAudioLevel(report);
+              if (level != null) {
+                final prev = _audioLevels[peerId] ?? 0.0;
+                final smoothed = (prev * 0.3) + (level * 0.7);
+                _audioLevels[peerId] = smoothed;
+                if (smoothed > topLevel) {
+                  topLevel = smoothed;
+                  topSpeakerId = peerId;
+                }
+                if ((prev - smoothed).abs() > 0.02) {
+                  hasChanges = true;
+                }
+              }
+            }
+
+            if (shouldUpdateQuality) {
+              final qualityChanged = _processPeerNetworkQuality(peerId, stats);
+              if (qualityChanged) {
                 hasChanges = true;
               }
             }
-          }
-
-          if (shouldUpdateQuality) {
-            final qualityChanged = _processPeerNetworkQuality(peerId, stats);
-            if (qualityChanged) {
-              hasChanges = true;
-            }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
       }
 
       // 2. Local audio level (if not muted)
-      if (!_isMicMuted && _peerConnections.isNotEmpty) {
-        final firstPc = _peerConnections.values.firstOrNull;
-        if (firstPc != null) {
+      if (!_isMicMuted) {
+        if (_isSfuMode && _audioProducer != null) {
           try {
-            final stats = await firstPc.getStats();
-            for (final report in stats) {
-              if (report.type == 'media-source' || report.type == 'outbound-rtp') {
+            final stats = await _audioProducer!.getStats();
+            if (stats is List) {
+              for (final report in stats.whereType<StatsReport>()) {
                 final level = _extractAudioLevel(report);
                 if (level != null) {
                   final prev = _audioLevels['local'] ?? 0.0;
@@ -875,6 +1382,30 @@ class WebRTCCallService extends ChangeNotifier {
               }
             }
           } catch (_) {}
+        } else if (_peerConnections.isNotEmpty) {
+          final firstPc = _peerConnections.values.firstOrNull;
+          if (firstPc != null) {
+            try {
+              final stats = await firstPc.getStats();
+              for (final report in stats) {
+                if (report.type == 'media-source' || report.type == 'outbound-rtp') {
+                  final level = _extractAudioLevel(report);
+                  if (level != null) {
+                    final prev = _audioLevels['local'] ?? 0.0;
+                    final smoothed = (prev * 0.3) + (level * 0.7);
+                    _audioLevels['local'] = smoothed;
+                    if (smoothed > topLevel) {
+                      topLevel = smoothed;
+                      topSpeakerId = 'local';
+                    }
+                    if ((prev - smoothed).abs() > 0.02) {
+                      hasChanges = true;
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
+          }
         }
       } else {
         if ((_audioLevels['local'] ?? 0.0) > 0.0) {
@@ -1426,6 +1957,12 @@ class WebRTCCallService extends ChangeNotifier {
       if (audioTracks.isNotEmpty) {
         _isMicMuted = !_isMicMuted;
         audioTracks[0].enabled = !_isMicMuted;
+        if (_isSfuMode && _audioProducer != null && _currentRoomId != null) {
+          _socket?.emit(_isMicMuted ? 'producer:pause' : 'producer:resume', {
+            'roomId': _currentRoomId,
+            'producerId': _audioProducer!.id,
+          });
+        }
         _safeNotify();
       }
     }
@@ -1437,6 +1974,12 @@ class WebRTCCallService extends ChangeNotifier {
       if (videoTracks.isNotEmpty) {
         _isVideoOff = !_isVideoOff;
         videoTracks[0].enabled = !_isVideoOff;
+        if (_isSfuMode && _videoProducer != null && _currentRoomId != null) {
+          _socket?.emit(_isVideoOff ? 'producer:pause' : 'producer:resume', {
+            'roomId': _currentRoomId,
+            'producerId': _videoProducer!.id,
+          });
+        }
         _safeNotify();
       }
     }
@@ -1447,6 +1990,13 @@ class WebRTCCallService extends ChangeNotifier {
       final videoTrack = _localStream!.getVideoTracks().firstOrNull;
       if (videoTrack != null) {
         await Helper.switchCamera(videoTrack);
+        if (_isSfuMode && _videoProducer != null) {
+          try {
+            await _videoProducer!.replaceTrack(videoTrack);
+          } catch (e) {
+            debugPrint('[WebRTC-SFU] Note on videoProducer.replaceTrack: $e');
+          }
+        }
       }
     }
   }
@@ -1496,7 +2046,30 @@ class WebRTCCallService extends ChangeNotifier {
     remoteRenderers.clear();
     await Future.delayed(const Duration(milliseconds: 60));
 
-    // 2. Close all peer connections.
+    // 2. Close all peer connections & SFU transports.
+    if (_isSfuMode) {
+      for (final list in _peerConsumers.values) {
+        for (final c in list) {
+          try {
+            c.close();
+          } catch (_) {}
+        }
+      }
+      _peerConsumers.clear();
+      try {
+        _audioProducer?.close();
+        _videoProducer?.close();
+        _sendTransport?.close();
+        _recvTransport?.close();
+      } catch (_) {}
+      _audioProducer = null;
+      _videoProducer = null;
+      _sendTransport = null;
+      _recvTransport = null;
+      _sfuDevice = null;
+      _isSfuMode = false;
+    }
+
     for (final entry in _peerConnections.entries) {
       try {
         await entry.value.close();
@@ -1578,6 +2151,29 @@ class WebRTCCallService extends ChangeNotifier {
     }
     remoteRenderers.clear();
 
+    if (_isSfuMode) {
+      for (final list in _peerConsumers.values) {
+        for (final c in list) {
+          try {
+            c.close();
+          } catch (_) {}
+        }
+      }
+      _peerConsumers.clear();
+      try {
+        _audioProducer?.close();
+        _videoProducer?.close();
+        _sendTransport?.close();
+        _recvTransport?.close();
+      } catch (_) {}
+      _audioProducer = null;
+      _videoProducer = null;
+      _sendTransport = null;
+      _recvTransport = null;
+      _sfuDevice = null;
+      _isSfuMode = false;
+    }
+
     for (final pc in _peerConnections.values) {
       try {
         pc.close();
@@ -1625,6 +2221,8 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!
       ..off('room:joined')
       ..off('room:participant_joined')
+      ..off('room:new_producer')
+      ..off('consumer:closed')
       ..off('webrtc:offer')
       ..off('webrtc:answer')
       ..off('webrtc:candidate')
