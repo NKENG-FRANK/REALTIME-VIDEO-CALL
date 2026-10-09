@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/meeting_link_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
@@ -175,16 +176,42 @@ class _CallPageState extends State<CallPage> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  'Room: ${_formatRoomId(widget.roomId)} • ${_callService.callState.name}',
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
+                InkWell(
+                  onTap: () => MeetingLinkService.showShareModal(
+                    context,
+                    roomId: widget.roomId,
+                    isVideo: true,
+                    title: widget.callTitle,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Room: ${_formatRoomId(widget.roomId)} • ${_callService.callState.name}',
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.link_rounded, size: 14, color: AppColors.primary),
+                    ],
+                  ),
                 ),
               ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.share_rounded, size: 20),
+            tooltip: 'Share Meeting Link',
+            color: AppColors.primary,
+            onPressed: () => MeetingLinkService.showShareModal(
+              context,
+              roomId: widget.roomId,
+              isVideo: true,
+              title: widget.callTitle,
             ),
           ),
           if (widget.isGroupCall || _callService.remoteRenderers.length > 1) ...[
@@ -236,7 +263,6 @@ class _CallPageState extends State<CallPage> {
 
   Widget _buildParticipantSidebar() {
     final remoteEntries = _callService.remoteRenderers.entries.toList();
-    final firstRemotePeerId = remoteEntries.isNotEmpty ? remoteEntries.first.key : '';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -248,7 +274,7 @@ class _CallPageState extends State<CallPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PARTICIPANTS (${widget.participantCount})',
+            'PARTICIPANTS (${1 + remoteEntries.length})',
             style: const TextStyle(
               color: AppColors.textMuted,
               fontSize: 10,
@@ -256,6 +282,7 @@ class _CallPageState extends State<CallPage> {
             ),
           ),
           const SizedBox(height: 14),
+          // Local (you)
           ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
@@ -265,37 +292,37 @@ class _CallPageState extends State<CallPage> {
             isSpeaking: _callService.isLocalSpeaking,
             audioLevel: _callService.getAudioLevel('local'),
           ),
-          const SizedBox(height: 10),
-          ParticipantCard(
-            name: widget.isGroupCall ? 'Member 1' : 'Remote Peer',
-            initials: widget.isGroupCall ? 'M1' : 'RP',
-            avatarColor: const Color(0xFF10A47D),
-            signalStrength: _callService.getNetworkQuality(firstRemotePeerId).bars,
-            networkQuality: _callService.getNetworkQuality(firstRemotePeerId),
-            isSpeaking: _callService.activeSpeakerId != null &&
-                _callService.activeSpeakerId != 'local',
-            audioLevel: _callService.activeSpeakerId != null &&
-                    _callService.activeSpeakerId != 'local'
-                ? _callService.getAudioLevel(_callService.activeSpeakerId!)
-                : 0.0,
-          ),
-          if (widget.isGroupCall && widget.participantCount > 2) ...[
-            for (int i = 2; i < widget.participantCount; i++) ...[
-              const SizedBox(height: 10),
-              ParticipantCard(
-                name: 'Member $i',
-                initials: 'M$i',
-                avatarColor: const Color(0xFF8752F4),
-                signalStrength: (i - 1) < remoteEntries.length
-                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key).bars
-                    : 4,
-                networkQuality: (i - 1) < remoteEntries.length
-                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key)
-                    : null,
-                isSpeaking: false,
+          // Live remote participants from remoteRenderers
+          ...remoteEntries.asMap().entries.map((mapEntry) {
+            final index = mapEntry.key;
+            final peerId = mapEntry.value.key;
+            final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
+            final name = widget.isGroupCall
+                ? 'Member ${index + 1} ($shortId)'
+                : 'Remote Peer';
+            final initials = widget.isGroupCall
+                ? 'M${index + 1}'
+                : 'RP';
+            final avatarColors = [
+              const Color(0xFF10A47D),
+              const Color(0xFF8752F4),
+              const Color(0xFFE85D04),
+              const Color(0xFF0077B6),
+              const Color(0xFFD62246),
+            ];
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ParticipantCard(
+                name: name,
+                initials: initials,
+                avatarColor: avatarColors[index % avatarColors.length],
+                signalStrength: _callService.getNetworkQuality(peerId).bars,
+                networkQuality: _callService.getNetworkQuality(peerId),
+                isSpeaking: _callService.isSpeaking(peerId),
+                audioLevel: _callService.getAudioLevel(peerId),
               ),
-            ],
-          ],
+            );
+          }),
         ],
       ),
     );

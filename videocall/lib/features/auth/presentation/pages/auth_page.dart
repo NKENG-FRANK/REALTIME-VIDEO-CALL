@@ -17,6 +17,15 @@ class AuthPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authCtrl = context.watch<AuthController>();
+    if (authCtrl.isAuthenticated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          _navigateAfterAuth(context);
+        }
+      });
+    }
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,

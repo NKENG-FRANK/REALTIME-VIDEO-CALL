@@ -74,7 +74,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── Room Lifecycle ──────────────────────────────────────────────────────
 
-  socket.on('room:join', async (data: { roomId: string; callType: string }) => {
+  socket.on('room:join', async (data: { roomId: string; callType: string }, callback?: (res: any) => void) => {
     try {
       const { roomId, callType } = data;
       const room = await getOrCreateRoom(roomId);
@@ -82,18 +82,36 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
       socket.join(roomId);
 
-      // Send router RTP capabilities (codec info) to the client
-      socket.emit('room:joined', {
+      const participants = getRoomParticipants(roomId)
+        .filter((p) => p.userId !== userId)
+        .map((p) => ({
+          userId: p.userId,
+          producerIds: Array.from(p.producers.keys()),
+          producers: Array.from(p.producers.values()).map((prod) => ({
+            id: prod.id,
+            kind: prod.kind,
+          })),
+        }));
+
+      const joinPayload = {
         roomId,
         rtpCapabilities: room.router.rtpCapabilities,
-        participants: getRoomParticipants(roomId)
-          .filter((p) => p.userId !== userId)
-          .map((p) => ({ userId: p.userId, producerIds: Array.from(p.producers.keys()) })),
-      });
+        participants,
+      };
+
+      if (typeof callback === 'function') {
+        callback({ status: 'ok', data: joinPayload });
+      }
+
+      // Send router RTP capabilities (codec info) to the client
+      socket.emit('room:joined', joinPayload);
 
       // Notify others in the room
       socket.to(roomId).emit('room:participant_joined', { userId });
     } catch (error: any) {
+      if (typeof callback === 'function') {
+        callback({ status: 'error', message: error.message });
+      }
       socket.emit('error', { message: error.message });
     }
   });
@@ -120,41 +138,73 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── WebRTC Transport ────────────────────────────────────────────────────
 
-  socket.on('transport:create', async (data: { roomId: string; direction: 'send' | 'recv' }) => {
+  socket.on('transport:create', async (data: { roomId: string; direction: 'send' | 'recv' }, callback?: (res: any) => void) => {
     try {
       const { roomId, direction } = data;
       const transport = await createWebRtcTransport(roomId, userId, direction);
 
-      socket.emit('transport:created', {
+      const payload = {
         direction,
         transportId: transport.id,
+        id: transport.id,
         iceParameters: transport.iceParameters,
         iceCandidates: transport.iceCandidates,
         dtlsParameters: transport.dtlsParameters,
         sctpParameters: transport.sctpParameters,
-      });
+      };
+
+      if (typeof callback === 'function') {
+        callback({ status: 'ok', data: payload });
+      }
+
+      socket.emit('transport:created', payload);
     } catch (error: any) {
+      if (typeof callback === 'function') {
+        callback({ status: 'error', message: error.message });
+      }
       socket.emit('error', { message: error.message });
     }
   });
 
   socket.on(
     'transport:connect',
-    async (data: { roomId: string; transportId: string; dtlsParameters: any; direction: 'send' | 'recv' }) => {
+    async (
+      data: { roomId: string; transportId: string; dtlsParameters: any; direction: 'send' | 'recv' },
+      callback?: (res: any) => void
+    ) => {
       try {
         const { roomId, dtlsParameters, direction } = data;
         const room = getRoom(roomId);
-        if (!room) return socket.emit('error', { message: 'Room not found' });
+        if (!room) {
+          const err = 'Room not found';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
 
         const participant = room.participants.get(userId);
-        if (!participant) return socket.emit('error', { message: 'Not in room' });
+        if (!participant) {
+          const err = 'Not in room';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
 
         const transport = direction === 'send' ? participant.sendTransport : participant.recvTransport;
-        if (!transport) return socket.emit('error', { message: 'Transport not found' });
+        if (!transport) {
+          const err = 'Transport not found';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
 
         await transport.connect({ dtlsParameters });
+
+        if (typeof callback === 'function') {
+          callback({ status: 'ok', data: { direction } });
+        }
         socket.emit('transport:connected', { direction });
       } catch (error: any) {
+        if (typeof callback === 'function') {
+          callback({ status: 'error', message: error.message });
+        }
         socket.emit('error', { message: error.message });
       }
     }
@@ -162,57 +212,83 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── Producers (Publishing Media) ────────────────────────────────────────
 
-  socket.on('producer:create', async (data: { roomId: string; kind: 'audio' | 'video'; rtpParameters: any; appData?: any }) => {
-    try {
-      const { roomId, kind, rtpParameters, appData } = data;
-      const room = getRoom(roomId);
-      if (!room) return socket.emit('error', { message: 'Room not found' });
+  socket.on(
+    'producer:create',
+    async (
+      data: { roomId: string; kind: 'audio' | 'video'; rtpParameters: any; appData?: any },
+      callback?: (res: any) => void
+    ) => {
+      try {
+        const { roomId, kind, rtpParameters, appData } = data;
+        const room = getRoom(roomId);
+        if (!room) {
+          const err = 'Room not found';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
 
-      const participant = room.participants.get(userId);
-      if (!participant || !participant.sendTransport) {
-        return socket.emit('error', { message: 'Send transport not ready' });
+        const participant = room.participants.get(userId);
+        if (!participant || !participant.sendTransport) {
+          const err = 'Send transport not ready';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
+
+        const producer = await participant.sendTransport.produce({ kind, rtpParameters, appData });
+        participant.producers.set(producer.id, producer);
+
+        producer.on('transportclose', () => {
+          producer.close();
+          participant.producers.delete(producer.id);
+        });
+
+        const payload = { producerId: producer.id, id: producer.id, kind };
+        if (typeof callback === 'function') {
+          callback({ status: 'ok', data: payload });
+        }
+
+        socket.emit('producer:created', payload);
+
+        // Notify other participants about the new producer so they can consume it
+        socket.to(roomId).emit('room:new_producer', {
+          userId,
+          producerId: producer.id,
+          kind,
+        });
+      } catch (error: any) {
+        if (typeof callback === 'function') {
+          callback({ status: 'error', message: error.message });
+        }
+        socket.emit('error', { message: error.message });
       }
-
-      const producer = await participant.sendTransport.produce({ kind, rtpParameters, appData });
-      participant.producers.set(producer.id, producer);
-
-      producer.on('transportclose', () => {
-        producer.close();
-        participant.producers.delete(producer.id);
-      });
-
-      socket.emit('producer:created', { producerId: producer.id, kind });
-
-      // Notify other participants about the new producer so they can consume it
-      socket.to(roomId).emit('room:new_producer', {
-        userId,
-        producerId: producer.id,
-        kind,
-      });
-    } catch (error: any) {
-      socket.emit('error', { message: error.message });
     }
-  });
+  );
 
-  socket.on('producer:pause', async (data: { roomId: string; producerId: string }) => {
+  socket.on('producer:pause', async (data: { roomId: string; producerId: string }, callback?: (res: any) => void) => {
     const { roomId, producerId } = data;
     const room = getRoom(roomId);
     const participant = room?.participants.get(userId);
     const producer = participant?.producers.get(producerId);
     if (producer) {
       await producer.pause();
+      if (typeof callback === 'function') callback({ status: 'ok' });
       socket.to(roomId).emit('producer:paused', { userId, producerId });
+    } else {
+      if (typeof callback === 'function') callback({ status: 'error', message: 'Producer not found' });
     }
   });
 
-  socket.on('producer:resume', async (data: { roomId: string; producerId: string }) => {
+  socket.on('producer:resume', async (data: { roomId: string; producerId: string }, callback?: (res: any) => void) => {
     const { roomId, producerId } = data;
     const room = getRoom(roomId);
     const participant = room?.participants.get(userId);
     const producer = participant?.producers.get(producerId);
     if (producer) {
       await producer.resume();
+      if (typeof callback === 'function') callback({ status: 'ok' });
       socket.to(roomId).emit('producer:resumed', { userId, producerId });
+    } else {
+      if (typeof callback === 'function') callback({ status: 'error', message: 'Producer not found' });
     }
   });
 
@@ -220,68 +296,109 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   socket.on(
     'consumer:create',
-    async (data: { roomId: string; producerId: string; producerUserId: string; rtpCapabilities: any }) => {
+    async (
+      data: { roomId: string; producerId: string; producerUserId: string; rtpCapabilities: any },
+      callback?: (res: any) => void
+    ) => {
       try {
         const { roomId, producerId, producerUserId, rtpCapabilities } = data;
         const room = getRoom(roomId);
-        if (!room) return socket.emit('error', { message: 'Room not found' });
+        if (!room) {
+          const err = 'Room not found';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
 
         // Verify router can route this consumer's capabilities
         if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-          return socket.emit('error', { message: 'Cannot consume producer (codec mismatch)' });
+          const err = 'Cannot consume producer (codec mismatch)';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
         }
 
-        const consumer = await room.participants.get(userId)?.recvTransport?.consume({
+        const participant = room.participants.get(userId);
+        if (!participant || !participant.recvTransport) {
+          const err = 'Recv transport not ready';
+          if (typeof callback === 'function') callback({ status: 'error', message: err });
+          return socket.emit('error', { message: err });
+        }
+
+        const consumer = await participant.recvTransport.consume({
           producerId,
           rtpCapabilities,
           paused: true, // Start paused, client resumes when ready
         });
 
-        if (!consumer) return socket.emit('error', { message: 'Recv transport not ready' });
-
-        room.participants.get(userId)!.consumers.set(consumer.id, consumer);
+        participant.consumers.set(consumer.id, consumer);
 
         consumer.on('transportclose', () => consumer.close());
         consumer.on('producerclose', () => {
           consumer.close();
-          room.participants.get(userId)?.consumers.delete(consumer.id);
-          socket.emit('consumer:closed', { consumerId: consumer.id });
+          participant.consumers.delete(consumer.id);
+          socket.emit('consumer:closed', { consumerId: consumer.id, producerId });
         });
 
-        socket.emit('consumer:created', {
+        const payload = {
           consumerId: consumer.id,
+          id: consumer.id,
           producerId: consumer.producerId,
           kind: consumer.kind,
           rtpParameters: consumer.rtpParameters,
           producerUserId,
-        });
+        };
+
+        if (typeof callback === 'function') {
+          callback({ status: 'ok', data: payload });
+        }
+
+        socket.emit('consumer:created', payload);
       } catch (error: any) {
+        if (typeof callback === 'function') {
+          callback({ status: 'error', message: error.message });
+        }
         socket.emit('error', { message: error.message });
       }
     }
   );
 
-  socket.on('consumer:resume', async (data: { roomId: string; consumerId: string }) => {
+  socket.on('consumer:resume', async (data: { roomId: string; consumerId: string }, callback?: (res: any) => void) => {
     const { roomId, consumerId } = data;
     const room = getRoom(roomId);
     const consumer = room?.participants.get(userId)?.consumers.get(consumerId);
-    if (consumer) await consumer.resume();
+    if (consumer) {
+      await consumer.resume();
+      if (typeof callback === 'function') callback({ status: 'ok' });
+    } else {
+      if (typeof callback === 'function') callback({ status: 'error', message: 'Consumer not found' });
+    }
   });
 
-  socket.on('consumer:pause', async (data: { roomId: string; consumerId: string }) => {
+  socket.on('consumer:pause', async (data: { roomId: string; consumerId: string }, callback?: (res: any) => void) => {
     const { roomId, consumerId } = data;
     const room = getRoom(roomId);
     const consumer = room?.participants.get(userId)?.consumers.get(consumerId);
-    if (consumer) await consumer.pause();
+    if (consumer) {
+      await consumer.pause();
+      if (typeof callback === 'function') callback({ status: 'ok' });
+    } else {
+      if (typeof callback === 'function') callback({ status: 'error', message: 'Consumer not found' });
+    }
   });
 
   // ─── Room Participants ────────────────────────────────────────────────────
 
-  socket.on('room:participants', (data: { roomId: string }) => {
+  socket.on('room:participants', (data: { roomId: string }, callback?: (res: any) => void) => {
     const participants = getRoomParticipants(data.roomId).map((p) => ({
       userId: p.userId,
       producerIds: Array.from(p.producers.keys()),
+      producers: Array.from(p.producers.values()).map((prod) => ({
+        id: prod.id,
+        kind: prod.kind,
+      })),
     }));
+    if (typeof callback === 'function') {
+      callback({ status: 'ok', data: participants });
+    }
     socket.emit('room:participants', participants);
   });
 

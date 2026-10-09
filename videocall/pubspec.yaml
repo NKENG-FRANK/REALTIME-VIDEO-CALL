@@ -43,6 +43,8 @@ dependencies:
   socket_io_client: ^2.0.3+1
   flutter_webrtc: ^1.6.2
   permission_handler: ^11.3.0
+  mediasfu_mediasoup_client: ^0.1.4
+  flutter_ringtone_player: ^4.0.0+4
 
 dev_dependencies:
   flutter_test:
@@ -66,10 +68,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/sounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

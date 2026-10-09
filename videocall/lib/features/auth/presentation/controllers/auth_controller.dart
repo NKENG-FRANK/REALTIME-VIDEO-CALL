@@ -14,6 +14,7 @@ class AuthController extends ChangeNotifier {
   // UI State
   bool _isSignUp = false;
   bool _isLoading = false;
+  bool _isInitializing = true;
   bool _showPassword = false;
   bool _rememberMe = true;
   bool _isAuthenticated = false;
@@ -30,35 +31,44 @@ class AuthController extends ChangeNotifier {
     // Defer auth check until after the first frame so that main.dart's Builder
     // has time to assign `onUserLoaded` before we try to call it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkAuthStatus();
+      checkAuthStatus();
     });
   }
 
-  Future<void> _checkAuthStatus() async {
-    final token = await AuthService.getToken();
-    if (token != null && token.isNotEmpty) {
-      final updatedProfile = await _authService.validateOrFetchProfile();
-      final freshToken = await AuthService.getToken();
+  Future<void> checkAuthStatus() async {
+    try {
+      final token = await AuthService.getToken();
+      if (token != null && token.isNotEmpty) {
+        final updatedProfile = await _authService.validateOrFetchProfile();
+        final freshToken = await AuthService.getToken();
 
-      if (freshToken != null && freshToken.isNotEmpty) {
-        _isAuthenticated = true;
-        _currentUser = updatedProfile ?? await AuthService.getCurrentUser();
-        if (_currentUser != null) {
-          onUserLoaded?.call(_currentUser!, freshToken);
+        if (freshToken != null && freshToken.isNotEmpty && updatedProfile != null) {
+          _isAuthenticated = true;
+          _currentUser = updatedProfile;
+          if (_currentUser != null) {
+            onUserLoaded?.call(_currentUser!, freshToken);
+          }
+        } else {
+          // Token was invalid or expired and cleared
+          _isAuthenticated = false;
+          _currentUser = null;
         }
-        notifyListeners();
       } else {
-        // Token was invalid or expired and cleared
         _isAuthenticated = false;
         _currentUser = null;
-        notifyListeners();
       }
+    } catch (_) {
+      _isAuthenticated = false;
+    } finally {
+      _isInitializing = false;
+      notifyListeners();
     }
   }
 
   // Getters
   bool get isSignUp => _isSignUp;
   bool get isLoading => _isLoading;
+  bool get isInitializing => _isInitializing;
   bool get showPassword => _showPassword;
   bool get rememberMe => _rememberMe;
   bool get isAuthenticated => _isAuthenticated;

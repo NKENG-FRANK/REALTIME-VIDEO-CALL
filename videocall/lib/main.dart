@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
+import 'config/theme/app_colors.dart';
 import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/ringtone_service.dart';
 import 'core/services/signaling_service.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/calls/domain/models/call_log.dart';
@@ -97,7 +99,7 @@ class MyApp extends StatelessWidget {
                     child: child ?? const SizedBox.shrink(),
                   );
                 },
-                home: const AuthPage(),
+                home: const _AppAuthResolver(),
                 debugShowCheckedModeBanner: false,
                 routes: {
                   '/auth': (context) => const AuthPage(),
@@ -141,7 +143,10 @@ class _GlobalIncomingCallListenerState
     final incoming = signaling.incomingCall;
 
     if (incoming == null) {
-      _showingIncomingCall = false;
+      if (_showingIncomingCall) {
+        _showingIncomingCall = false;
+        RingtoneService().stop();
+      }
     } else if (!_showingIncomingCall) {
       _showingIncomingCall = true;
       // Push after the current frame so we don't call setState/Navigator
@@ -198,7 +203,9 @@ class _GlobalIncomingCallListenerState
                                 roomId: incoming.roomId,
                                 isVideoCall: true,
                                 isGroupCall: incoming.isGroupCall,
-                                participantCount: incoming.isGroupCall ? 3 : 2,
+                                // participantCount is used only as an initial hint;
+                                // the sidebar dynamically uses remoteRenderers.length
+                                participantCount: 2,
                               )
                             : AudioCallPage(
                                 callTitle: incoming.isGroupCall
@@ -208,7 +215,7 @@ class _GlobalIncomingCallListenerState
                                 contactName: incoming.callerName,
                                 contactMatricule: incoming.callerMatricule,
                                 isGroupCall: incoming.isGroupCall,
-                                participantCount: incoming.isGroupCall ? 3 : 2,
+                                participantCount: 2,
                               ),
                       ),
                     );
@@ -249,8 +256,9 @@ class _GlobalIncomingCallListenerState
               ),
             )
             .then((_) {
-              // If the user dismisses via the back button, reset the flag
+              // If the user dismisses via the back button, reset the flag and stop ringtone
               _showingIncomingCall = false;
+              RingtoneService().stop();
               if (mounted) {
                 context.read<SignalingService>().clearIncomingCall();
               }
@@ -259,5 +267,77 @@ class _GlobalIncomingCallListenerState
     }
 
     return widget.child;
+  }
+}
+
+/// Automatically resolves startup navigation based on stored JWT validity:
+/// - If token is active & valid: automatically opens CallsHistoryPage.
+/// - If token is missing/expired: opens AuthPage.
+/// - While validating: displays a branded Callwave splash screen.
+class _AppAuthResolver extends StatelessWidget {
+  const _AppAuthResolver({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final authCtrl = context.watch<AuthController>();
+
+    // While verifying stored credentials on app launch
+    if (authCtrl.isInitializing) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF3F7F4),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.phone_in_talk_rounded,
+                  color: Colors.white,
+                  size: 38,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Callwave',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 22),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (authCtrl.isAuthenticated) {
+      return const CallsHistoryPage();
+    } else {
+      return const AuthPage();
+    }
   }
 }

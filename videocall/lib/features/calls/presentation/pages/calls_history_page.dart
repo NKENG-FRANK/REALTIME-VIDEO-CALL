@@ -6,6 +6,7 @@ import '../../../../core/widgets/animated_background.dart';
 import '../../../../core/widgets/hover_widgets.dart';
 import '../../../../core/widgets/app_shell.dart';
 import 'package:videocall/features/call/presentation/widgets/call_launcher_dialogs.dart';
+import 'package:videocall/features/call/presentation/widgets/join_meeting_dialog.dart';
 import '../../domain/models/call_log.dart';
 import '../../../../core/services/signaling_service.dart';
 import '../controllers/calls_controller.dart';
@@ -122,17 +123,34 @@ class _CallsHistoryPageState extends State<CallsHistoryPage> {
               ),
               if (isMobile) ...[
                 IconButton(
+                  icon: const Icon(Icons.add_link_rounded, color: AppColors.primary),
+                  tooltip: 'Join via Link',
+                  style: IconButton.styleFrom(backgroundColor: AppColors.primary.withOpacity(0.1)),
+                  onPressed: () => showJoinMeetingDialog(context),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
                   icon: const Icon(Icons.groups_rounded, color: AppColors.primary),
+                  tooltip: 'Start Group Call',
                   style: IconButton.styleFrom(backgroundColor: AppColors.primary.withOpacity(0.1)),
                   onPressed: () => showGroupCallLaunchDialog(context),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.primary),
+                  tooltip: 'New Call',
                   style: IconButton.styleFrom(backgroundColor: AppColors.accent),
                   onPressed: () => showOneToOneCallLaunchDialog(context),
                 ),
               ] else ...[
+                SmoothActionButton(
+                  icon: Icons.add_link_rounded,
+                  label: 'Join via Link',
+                  backgroundColor: const Color(0xFFF0F6F2),
+                  foregroundColor: AppColors.primary,
+                  onPressed: () => showJoinMeetingDialog(context),
+                ),
+                const SizedBox(width: 9),
                 SmoothActionButton(
                   icon: Icons.groups_rounded,
                   label: AppLocalizations.of(context).startGroupCall,
