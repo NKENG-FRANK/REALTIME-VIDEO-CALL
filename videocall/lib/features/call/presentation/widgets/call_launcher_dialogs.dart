@@ -7,6 +7,7 @@ import '../../../contacts/presentation/controllers/contacts_controller.dart';
 import 'package:videocall/features/calls/domain/models/call_log.dart';
 import 'package:videocall/features/calls/presentation/controllers/calls_controller.dart';
 
+import '../../../../core/services/meeting_link_service.dart';
 import '../pages/connecting_page.dart';
 
 /// Shows the Launch Group Call modal screen.
@@ -210,6 +211,7 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _searchController;
   final Set<String> _selectedContactIds = {};
+  late final String _roomId;
   late final String _roomLink;
 
   @override
@@ -217,8 +219,13 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
     super.initState();
     _titleController = TextEditingController(text: 'Group Sync Call');
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString().substring(7);
-    _roomLink = 'https://callwave.ngomna.cm/room/grp-$randomCode';
+    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
+    _roomId = 'group-$randomCode';
+    _roomLink = MeetingLinkService.generateMeetingLink(
+      roomId: _roomId,
+      isVideo: true,
+      title: 'Group Sync Call',
+    );
   }
 
   @override
@@ -229,20 +236,19 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
   }
 
   void _copyLink() {
-    Clipboard.setData(ClipboardData(text: _roomLink));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Group call link copied to clipboard!'),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 2),
-      ),
+    MeetingLinkService.copyLinkToClipboard(
+      context,
+      roomId: _roomId,
+      isVideo: true,
+      title: _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : 'Group Sync Call',
     );
   }
 
   void _launchCall(bool isVideo) {
-    // For group calls, generate a unique room ID
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
-    final roomId = 'group-$randomCode';
+    // For group calls, use the unified room ID generated for this session
+    final roomId = _roomId;
     final groupTitle = _titleController.text.trim().isNotEmpty
         ? _titleController.text.trim()
         : (isVideo ? 'Group Video Call' : 'Group Audio Call');
@@ -411,6 +417,21 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Share Invite',
+                            icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.primary),
+                            onPressed: () {
+                              MeetingLinkService.showShareModal(
+                                context,
+                                roomId: _roomId,
+                                isVideo: true,
+                                title: _titleController.text.trim().isNotEmpty
+                                    ? _titleController.text.trim()
+                                    : 'Group Sync Call',
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
                           ElevatedButton.icon(
                             onPressed: _copyLink,
                             icon: const Icon(Icons.copy_rounded, size: 14),
@@ -605,14 +626,20 @@ class _OneToOneCallLaunchDialog extends StatefulWidget {
 class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
   late final TextEditingController _searchController;
   String? _selectedContactId;
+  late final String _roomId;
   late final String _directCallLink;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString().substring(7);
-    _directCallLink = 'https://callwave.ngomna.cm/call/direct-$randomCode';
+    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
+    _roomId = 'direct-$randomCode';
+    _directCallLink = MeetingLinkService.generateMeetingLink(
+      roomId: _roomId,
+      isVideo: true,
+      title: 'Direct Call',
+    );
   }
 
   @override
@@ -622,13 +649,11 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
   }
 
   void _copyLink() {
-    Clipboard.setData(ClipboardData(text: _directCallLink));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Direct call link copied to clipboard!'),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 2),
-      ),
+    MeetingLinkService.copyLinkToClipboard(
+      context,
+      roomId: _roomId,
+      isVideo: true,
+      title: 'Direct Call',
     );
   }
 
@@ -757,6 +782,19 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Share Invite',
+                            icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.primary),
+                            onPressed: () {
+                              MeetingLinkService.showShareModal(
+                                context,
+                                roomId: _roomId,
+                                isVideo: true,
+                                title: 'Direct Call',
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
                           ElevatedButton.icon(
                             onPressed: _copyLink,
                             icon: const Icon(Icons.copy_rounded, size: 14),

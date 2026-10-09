@@ -111,10 +111,34 @@ class AuthService {
     return null;
   }
 
+  /// Checks whether a JWT token is expired based on its standard `exp` timestamp.
+  static bool isTokenExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+      final normalized = base64Url.normalize(parts[1]);
+      final payloadString = utf8.decode(base64Url.decode(normalized));
+      final payload = jsonDecode(payloadString);
+      if (payload['exp'] != null) {
+        final expDate = DateTime.fromMillisecondsSinceEpoch((payload['exp'] as num).toInt() * 1000);
+        return DateTime.now().isAfter(expDate);
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Validate current stored token against backend GET /api/v1/users/profile
   Future<Map<String, dynamic>?> validateOrFetchProfile() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return null;
+
+    // If token is expired locally, immediately clear and require re-login
+    if (isTokenExpired(token)) {
+      await logout();
+      return null;
+    }
 
     try {
       final response = await http.get(
@@ -123,7 +147,7 @@ class AuthService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      );
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         final profile = jsonDecode(response.body);
@@ -131,14 +155,15 @@ class AuthService {
         await prefs.setString(_userKey, jsonEncode(profile));
         return profile;
       } else if (response.statusCode == 401 || response.statusCode == 403) {
-        // Token is expired or invalid — clear stored token
+        // Token was rejected or invalidated on server — clear stored session
         await logout();
         return null;
       }
     } catch (e) {
-      // If server unreachable, retain cached profile
+      // If server is unreachable or offline, retain cached user profile
+      return await getCurrentUser();
     }
-    return null;
+    return await getCurrentUser();
   }
 
   /// Logout and clear stored session

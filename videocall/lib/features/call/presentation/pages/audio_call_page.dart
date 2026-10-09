@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/meeting_link_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import '../widgets/call_controls.dart';
 import '../widgets/participant_card.dart';
@@ -196,16 +197,31 @@ class _AudioCallPageState extends State<AudioCallPage>
                       size: 11,
                       color: AppColors.onlineGreen,
                     ),
-                    const SizedBox(width: 4),
                     Expanded(
-                      child: Text(
-                        'Room: ${_formatRoomId(widget.roomId)} • Encrypted Audio',
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
+                      child: InkWell(
+                        onTap: () => MeetingLinkService.showShareModal(
+                          context,
+                          roomId: widget.roomId,
+                          isVideo: false,
+                          title: widget.callTitle,
+                          hostName: widget.contactName,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Room: ${_formatRoomId(widget.roomId)} • Encrypted Audio',
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.link_rounded, size: 14, color: AppColors.primary),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -213,7 +229,19 @@ class _AudioCallPageState extends State<AudioCallPage>
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.share_rounded, size: 20),
+            tooltip: 'Share Meeting Link',
+            color: AppColors.primary,
+            onPressed: () => MeetingLinkService.showShareModal(
+              context,
+              roomId: widget.roomId,
+              isVideo: false,
+              title: widget.callTitle,
+              hostName: widget.contactName,
+            ),
+          ),
+          const SizedBox(width: 4),
           SignalIndicator(
             strength: _callService.localNetworkQuality.bars,
             showLabel: true,
@@ -235,7 +263,6 @@ class _AudioCallPageState extends State<AudioCallPage>
 
   Widget _buildParticipantSidebar() {
     final remoteEntries = _callService.remoteRenderers.entries.toList();
-    final firstRemotePeerId = remoteEntries.isNotEmpty ? remoteEntries.first.key : '';
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -247,7 +274,7 @@ class _AudioCallPageState extends State<AudioCallPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PARTICIPANTS (${widget.participantCount})',
+            'PARTICIPANTS (${1 + remoteEntries.length})',
             style: const TextStyle(
               color: AppColors.textMuted,
               fontSize: 10,
@@ -256,6 +283,7 @@ class _AudioCallPageState extends State<AudioCallPage>
             ),
           ),
           const SizedBox(height: 14),
+          // Local (you)
           ParticipantCard(
             name: 'You (Local)',
             initials: 'ME',
@@ -265,43 +293,242 @@ class _AudioCallPageState extends State<AudioCallPage>
             isSpeaking: _callService.isLocalSpeaking,
             audioLevel: _callService.getAudioLevel('local'),
           ),
-          const SizedBox(height: 10),
-          ParticipantCard(
-            name: widget.contactName,
-            initials: _deriveInitials(widget.contactName),
-            avatarColor: const Color(0xFF10A47D),
-            signalStrength: _callService.getNetworkQuality(firstRemotePeerId).bars,
-            networkQuality: _callService.getNetworkQuality(firstRemotePeerId),
-            isSpeaking: _callService.activeSpeakerId != null &&
-                _callService.activeSpeakerId != 'local',
-            audioLevel: _callService.activeSpeakerId != null &&
-                    _callService.activeSpeakerId != 'local'
-                ? _callService.getAudioLevel(_callService.activeSpeakerId!)
-                : 0.0,
-          ),
-          if (widget.isGroupCall && widget.participantCount > 2) ...[
-            for (int i = 2; i < widget.participantCount; i++) ...[
-              const SizedBox(height: 10),
-              ParticipantCard(
-                name: 'Member $i',
-                initials: 'M$i',
-                avatarColor: const Color(0xFF8752F4),
-                signalStrength: (i - 1) < remoteEntries.length
-                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key).bars
-                    : 4,
-                networkQuality: (i - 1) < remoteEntries.length
-                    ? _callService.getNetworkQuality(remoteEntries[i - 1].key)
-                    : null,
-                isSpeaking: false,
+          // Live remote participants
+          ...remoteEntries.asMap().entries.map((mapEntry) {
+            final index = mapEntry.key;
+            final peerId = mapEntry.value.key;
+            final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
+            final name = widget.isGroupCall
+                ? 'Member ${index + 1} ($shortId)'
+                : widget.contactName;
+            final initials = widget.isGroupCall
+                ? 'M${index + 1}'
+                : _deriveInitials(widget.contactName);
+            final avatarColors = [
+              const Color(0xFF10A47D),
+              const Color(0xFF8752F4),
+              const Color(0xFFE85D04),
+              const Color(0xFF0077B6),
+              const Color(0xFFD62246),
+            ];
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ParticipantCard(
+                name: name,
+                initials: initials,
+                avatarColor: avatarColors[index % avatarColors.length],
+                signalStrength: _callService.getNetworkQuality(peerId).bars,
+                networkQuality: _callService.getNetworkQuality(peerId),
+                isSpeaking: _callService.isSpeaking(peerId),
+                audioLevel: _callService.getAudioLevel(peerId),
               ),
-            ],
-          ],
+            );
+          }),
         ],
       ),
     );
   }
 
   Widget _buildHeroAudioArea() {
+    // Group mode: show a tile grid of all participants
+    if (widget.isGroupCall && _callService.remoteRenderers.isNotEmpty) {
+      return _buildGroupAudioGrid();
+    }
+    // 1-on-1 mode: classic single hero avatar + ripple
+    return _buildSingleHeroAudioArea();
+  }
+
+  Widget _buildGroupAudioGrid() {
+    final remoteEntries = _callService.remoteRenderers.entries.toList();
+    final allPeers = [
+      ('local', 'You', 'ME', AppColors.primary),
+      ...remoteEntries.asMap().entries.map((e) {
+        final index = e.key;
+        final peerId = e.value.key;
+        final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
+        final avatarColors = [
+          const Color(0xFF10A47D),
+          const Color(0xFF8752F4),
+          const Color(0xFFE85D04),
+          const Color(0xFF0077B6),
+          const Color(0xFFD62246),
+        ];
+        return (peerId, 'Member ${index + 1} ($shortId)', 'M${index + 1}', avatarColors[index % avatarColors.length]);
+      }),
+    ];
+
+    return Container(
+      color: AppColors.callBackground,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(20),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: allPeers.length <= 2 ? 2 : allPeers.length <= 4 ? 2 : 3,
+          childAspectRatio: 0.85,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+        ),
+        itemCount: allPeers.length,
+        itemBuilder: (context, index) {
+          final (peerId, name, initials, avatarColor) = allPeers[index];
+          final isLocal = peerId == 'local';
+          final isMuted = isLocal ? _callService.isMicMuted : false;
+          final isSpeaking = isLocal
+              ? _callService.isLocalSpeaking
+              : _callService.isSpeaking(peerId);
+          final audioLevel = isLocal
+              ? _callService.getAudioLevel('local')
+              : _callService.getAudioLevel(peerId);
+          final quality = isLocal
+              ? _callService.localNetworkQuality
+              : _callService.getNetworkQuality(peerId);
+
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isSpeaking ? const Color(0xFF10B981) : const Color(0xFFDCE7DF),
+                width: isSpeaking ? 2.5 : 1.5,
+              ),
+              boxShadow: [
+                if (isSpeaking)
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.30),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  )
+                else
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Speaking ring + avatar
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: isSpeaking ? 76 : 66,
+                      height: isSpeaking ? 76 : 66,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSpeaking
+                            ? const Color(0xFF10B981).withOpacity(0.18)
+                            : Colors.transparent,
+                      ),
+                    ),
+                    Container(
+                      width: 60,
+                      height: 60,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: avatarColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: avatarColor.withOpacity(0.3),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    // Mute badge
+                    Positioned(
+                      bottom: 2,
+                      right: 2,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          border: Border.all(
+                            color: isMuted
+                                ? AppColors.callDecline
+                                : AppColors.onlineGreen,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          isMuted ? Icons.mic_off : Icons.mic,
+                          size: 10,
+                          color: isMuted
+                              ? AppColors.callDecline
+                              : AppColors.onlineGreen,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                // Name
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                // Speaking badge or signal indicator
+                if (isSpeaking)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      VoiceWaveIndicator(
+                        isSpeaking: true,
+                        audioLevel: audioLevel,
+                        maxHeight: 10,
+                        barWidth: 2,
+                        barCount: 3,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Speaking',
+                        style: const TextStyle(
+                          color: Color(0xFF065F46),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  SignalIndicator(
+                    strength: quality.bars,
+                    maxBars: 4,
+                    barWidth: 2,
+                    maxBarHeight: 9,
+                    tooltip: quality.summaryText,
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSingleHeroAudioArea() {
     final initials = _deriveInitials(widget.contactName);
     final remotePeerId = _callService.remoteRenderers.keys.firstOrNull ?? '';
     final remoteQuality = _callService.getNetworkQuality(remotePeerId);

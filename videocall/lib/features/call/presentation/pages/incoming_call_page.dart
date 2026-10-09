@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/services/ringtone_service.dart';
 
 /// Incoming call screen showing caller info with pulsing avatar,
 /// decline/accept buttons, and audio waveform animation.
@@ -42,6 +43,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   @override
   void initState() {
     super.initState();
+    // Start device incoming call ringtone
+    RingtoneService().playIncoming();
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -54,6 +58,8 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
   @override
   void dispose() {
+    // Ensure ringtone is stopped when user navigates away
+    RingtoneService().stop();
     _pulseController.dispose();
     _waveController.dispose();
     super.dispose();
@@ -89,6 +95,33 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 ),
               ),
               const SizedBox(height: 10),
+              // Group title (shown prominently for group calls)
+              if (widget.isGroupCall && widget.groupTitle != null && widget.groupTitle!.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.groups_rounded, size: 14, color: AppColors.primary.withOpacity(0.8)),
+                      const SizedBox(width: 6),
+                      Text(
+                        widget.groupTitle!,
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               // Caller name
               Text(
                 widget.callerName,
@@ -98,11 +131,14 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   fontWeight: FontWeight.w900,
                   height: 1.2,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              // Caller matricule
+              // Subtitle: group invite message or matricule
               Text(
-                widget.callerMatricule,
+                widget.isGroupCall
+                    ? 'is inviting you to join'
+                    : widget.callerMatricule,
                 style: TextStyle(
                   color: AppColors.textMuted.withOpacity(0.8),
                   fontSize: 12,
@@ -268,6 +304,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
           color: AppColors.callDecline,
           rotateIcon: true,
           onTap: () {
+            RingtoneService().stop();
             if (widget.onDecline != null) {
               widget.onDecline!();
             }
@@ -285,6 +322,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
           label: 'Accept',
           color: AppColors.callAccept,
           onTap: () {
+            RingtoneService().stop();
             if (widget.onAccept != null) {
               widget.onAccept!();
             } else {
