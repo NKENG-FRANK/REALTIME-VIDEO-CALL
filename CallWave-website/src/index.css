@@ -2,8 +2,17 @@
   font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #203128;
-  background: #f5f8f2;
+  color: #172c22;
+  background: #f7f6ed;
+  --color-ink: #172c22;
+  --color-green: #176447;
+  --color-green-light: #e8f1e8;
+  --color-red: #b65c51;
+  --color-red-light: #f5e5df;
+  --color-yellow: #e6c85b;
+  --color-yellow-light: #fbf3d7;
+  --color-muted: #53675a;
+  --color-paper: rgba(255, 254, 248, 0.88);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,14 +24,14 @@
 }
 
 html {
-  background: #f5f8f2;
+  background: #f7f6ed;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f5f8f2;
+  background: #f7f6ed;
 }
 
 button,
