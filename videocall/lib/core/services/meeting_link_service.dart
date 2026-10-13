@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../config/api_config.dart';
 import '../../config/theme/app_colors.dart';
 
 /// Parsed representation of a meeting join link or code.
@@ -17,7 +19,39 @@ class ParsedMeetingLink {
 
 /// Service for generating, parsing, and sharing meeting join links and codes.
 class MeetingLinkService {
-  static const String baseUrl = 'https://callwave.cenadi.cm/join';
+  /// Stores a meeting link targeted by an incoming web URL/deep-link while auth completes.
+  static ParsedMeetingLink? pendingJoinLink;
+
+  /// Consumes and returns the pending join link if one was saved.
+  static ParsedMeetingLink? consumePendingJoin() {
+    final pending = pendingJoinLink;
+    pendingJoinLink = null;
+    return pending;
+  }
+
+  /// Detects whether the current browser URL (when running on Flutter Web)
+  /// contains a meeting join link in either query parameters or URL fragment.
+  static ParsedMeetingLink? getInitialWebJoinTarget() {
+    if (!kIsWeb) return null;
+    try {
+      final fullUrl = Uri.base.toString();
+      final parsed = parseInput(fullUrl);
+      if (parsed.roomId.isNotEmpty) {
+        return parsed;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static String get baseUrl {
+    if (kIsWeb) {
+      final portPart = (Uri.base.hasPort && Uri.base.port != 80 && Uri.base.port != 443)
+          ? ':${Uri.base.port}'
+          : '';
+      return '${Uri.base.scheme}://${Uri.base.host}$portPart/#/join';
+    }
+    return '${ApiConfig.httpScheme}://${ApiConfig.host}/join';
+  }
 
   /// Generates a standardized shareable URL for any meeting room.
   static String generateMeetingLink({
@@ -61,8 +95,9 @@ class MeetingLinkService {
 
   /// Parses raw input which can be:
   /// 1. A full URL (e.g. `https://callwave.cenadi.cm/join?room=group-123&video=false&title=Sync`)
-  /// 2. A deep link scheme (e.g. `callwave://join?room=group-123`)
-  /// 3. A raw room code (e.g. `group-1728472910` or `123-456`)
+  /// 2. A web hash URL (e.g. `http://localhost:8080/#/join?room=group-123`)
+  /// 3. A deep link scheme (e.g. `callwave://join?room=group-123`)
+  /// 4. A raw room code (e.g. `group-1728472910` or `123-456`)
   static ParsedMeetingLink parseInput(String rawInput) {
     final trimmed = rawInput.trim();
     if (trimmed.isEmpty) {
@@ -71,6 +106,7 @@ class MeetingLinkService {
 
     try {
       final uri = Uri.parse(trimmed);
+      // 1. Direct query parameters
       if (uri.queryParameters.containsKey('room')) {
         final roomId = uri.queryParameters['room'] ?? '';
         final isVideo = uri.queryParameters['video'] != 'false';
@@ -80,6 +116,22 @@ class MeetingLinkService {
           isVideo: isVideo,
           title: title,
         );
+      }
+
+      // 2. Fragment query parameters (e.g. /#/join?room=...)
+      if (uri.fragment.isNotEmpty && uri.fragment.contains('?')) {
+        final queryStr = uri.fragment.split('?').last;
+        final fragUri = Uri(query: queryStr);
+        if (fragUri.queryParameters.containsKey('room')) {
+          final roomId = fragUri.queryParameters['room'] ?? '';
+          final isVideo = fragUri.queryParameters['video'] != 'false';
+          final title = fragUri.queryParameters['title'];
+          return ParsedMeetingLink(
+            roomId: roomId,
+            isVideo: isVideo,
+            title: title,
+          );
+        }
       }
     } catch (_) {}
 
@@ -325,14 +377,19 @@ class _ShareMeetingModal extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Room ID: $roomId',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                Flexible(
+                  child: Text(
+                    'Room ID: $roomId',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 8),
                 TextButton(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: roomId));

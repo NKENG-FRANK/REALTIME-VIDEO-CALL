@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/services/meeting_link_service.dart';
 import '../../../../core/widgets/animated_background.dart';
+import '../../../call/presentation/pages/audio_call_page.dart';
+import '../../../call/presentation/pages/call_page.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/sign_in_form.dart';
 import '../widgets/sign_up_form.dart';
@@ -10,9 +13,76 @@ import '../widgets/welcome_panel.dart';
 class AuthPage extends StatelessWidget {
   const AuthPage({Key? key}) : super(key: key);
 
-  /// Navigate to calls history after successful auth
+  /// Navigate to call or calls history after successful auth
   void _navigateAfterAuth(BuildContext context) {
+    final pending = MeetingLinkService.consumePendingJoin();
+    if (pending != null && pending.roomId.isNotEmpty) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => pending.isVideo
+              ? CallPage(
+                  callTitle: pending.title ?? 'Meeting ${pending.roomId}',
+                  roomId: pending.roomId,
+                  isVideoCall: true,
+                  isGroupCall: true,
+                  participantCount: 2,
+                )
+              : AudioCallPage(
+                  callTitle: pending.title ?? 'Meeting ${pending.roomId}',
+                  roomId: pending.roomId,
+                  contactName: pending.title ?? 'Meeting',
+                  contactMatricule: pending.roomId,
+                  isGroupCall: true,
+                  participantCount: 2,
+                ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).pushReplacementNamed('/calls');
+  }
+
+  Widget _buildPendingJoinBanner() {
+    final pending = MeetingLinkService.pendingJoinLink;
+    if (pending == null || pending.roomId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.meeting_room_rounded, color: AppColors.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Join Meeting: ${pending.title ?? pending.roomId}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Sign in or register to join immediately',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -117,8 +187,12 @@ class AuthPage extends StatelessWidget {
                 child: Center(
                   child: SizedBox(
                     width: 360,
-                    child: authController.isSignUp
-                        ? SignUpForm(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildPendingJoinBanner(),
+                        authController.isSignUp
+                            ? SignUpForm(
                             fullName: authController.fullName,
                             matricule: authController.matricule,
                             password: authController.password,
@@ -162,6 +236,8 @@ class AuthPage extends StatelessWidget {
                             },
                             isLoading: authController.isLoading,
                           ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -241,10 +317,14 @@ class AuthPage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(hPadding, 24, hPadding, 32),
             child: SizedBox(
               width: double.infinity,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 450),
-                transitionBuilder: _slideTransition,
-                child: authController.isSignUp
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildPendingJoinBanner(),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 450),
+                    transitionBuilder: _slideTransition,
+                    child: authController.isSignUp
                     ? SignUpForm(
                         key: const ValueKey('mobile-sign-up'),
                         fullName: authController.fullName,
@@ -289,8 +369,10 @@ class AuthPage extends StatelessWidget {
                         isLoading: authController.isLoading,
                       ),
               ),
-            ),
+            ],
           ),
+        ),
+      ),
         ],
       ),
     );

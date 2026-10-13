@@ -7,6 +7,7 @@ import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/ringtone_service.dart';
+import 'core/services/meeting_link_service.dart';
 import 'core/services/signaling_service.dart';
 import 'features/auth/presentation/controllers/auth_controller.dart';
 import 'features/calls/domain/models/call_log.dart';
@@ -101,6 +102,43 @@ class MyApp extends StatelessWidget {
                 },
                 home: const _AppAuthResolver(),
                 debugShowCheckedModeBanner: false,
+                onGenerateRoute: (settings) {
+                  final name = settings.name;
+                  if (name != null) {
+                    final uri = Uri.tryParse(name);
+                    final path = uri?.path ?? '';
+                    if (path == '/join' || path == 'join') {
+                      final parsed = MeetingLinkService.parseInput(name);
+                      if (parsed.roomId.isNotEmpty) {
+                        final authCtrl = context.read<AuthController>();
+                        if (authCtrl.isAuthenticated) {
+                          return MaterialPageRoute(
+                            builder: (_) => parsed.isVideo
+                                ? CallPage(
+                                    callTitle: parsed.title ?? 'Meeting ${parsed.roomId}',
+                                    roomId: parsed.roomId,
+                                    isVideoCall: true,
+                                    isGroupCall: true,
+                                    participantCount: 2,
+                                  )
+                                : AudioCallPage(
+                                    callTitle: parsed.title ?? 'Meeting ${parsed.roomId}',
+                                    roomId: parsed.roomId,
+                                    contactName: parsed.title ?? 'Meeting',
+                                    contactMatricule: parsed.roomId,
+                                    isGroupCall: true,
+                                    participantCount: 2,
+                                  ),
+                          );
+                        } else {
+                          MeetingLinkService.pendingJoinLink = parsed;
+                          return MaterialPageRoute(builder: (_) => const AuthPage());
+                        }
+                      }
+                    }
+                  }
+                  return null;
+                },
                 routes: {
                   '/auth': (context) => const AuthPage(),
                   '/calls': (context) => const CallsHistoryPage(),
@@ -108,8 +146,6 @@ class MyApp extends StatelessWidget {
                   '/settings': (context) => const SettingsPage(),
                   '/connecting': (context) => const ConnectingPage(),
                   '/call-ended': (context) => const CallEndedPage(),
-                  // /incoming-call and /call are pushed programmatically with
-                  // real data — not registered as static named routes anymore.
                 },
               );
             },
@@ -334,7 +370,32 @@ class _AppAuthResolver extends StatelessWidget {
       );
     }
 
+    // Check if there is an incoming join target from web URL or deep-link
+    final webJoin = MeetingLinkService.getInitialWebJoinTarget();
+    if (webJoin != null && webJoin.roomId.isNotEmpty) {
+      MeetingLinkService.pendingJoinLink = webJoin;
+    }
+
     if (authCtrl.isAuthenticated) {
+      final pending = MeetingLinkService.consumePendingJoin();
+      if (pending != null && pending.roomId.isNotEmpty) {
+        return pending.isVideo
+            ? CallPage(
+                callTitle: pending.title ?? 'Meeting ${pending.roomId}',
+                roomId: pending.roomId,
+                isVideoCall: true,
+                isGroupCall: true,
+                participantCount: 2,
+              )
+            : AudioCallPage(
+                callTitle: pending.title ?? 'Meeting ${pending.roomId}',
+                roomId: pending.roomId,
+                contactName: pending.title ?? 'Meeting',
+                contactMatricule: pending.roomId,
+                isGroupCall: true,
+                participantCount: 2,
+              );
+      }
       return const CallsHistoryPage();
     } else {
       return const AuthPage();
