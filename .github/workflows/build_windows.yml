@@ -25,13 +25,16 @@ jobs:
       - name: Enable Windows desktop build
         run: flutter config --enable-windows-desktop
 
+      - name: Verify Flutter setup
+        run: flutter doctor -v
+
       - name: Install dependencies
         working-directory: videocall
         run: flutter pub get
 
       - name: Build Windows release executable
         working-directory: videocall
-        run: flutter build windows --release
+        run: flutter build windows --release --verbose
 
       - name: Upload Windows build artifact
         uses: actions/upload-artifact@v4
