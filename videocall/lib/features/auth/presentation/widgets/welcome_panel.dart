@@ -123,22 +123,13 @@ class WelcomePanel extends StatelessWidget {
                     // Brand
                     Row(
                       children: [
-                        Container(
-                          width: isCompact ? 26 : 30,
-                          height: isCompact ? 26 : 30,
-                          decoration: BoxDecoration(
-                            color: AppColors.accent,
-                            borderRadius: BorderRadius.circular(isCompact ? 6 : 8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'C',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w900,
-                                fontSize: isCompact ? 12 : 14,
-                              ),
-                            ),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(isCompact ? 6 : 8),
+                          child: Image.asset(
+                            'assets/logo/logo.png',
+                            width: isCompact ? 28 : 34,
+                            height: isCompact ? 28 : 34,
+                            fit: BoxFit.contain,
                           ),
                         ),
                         SizedBox(width: isCompact ? 7 : 9),

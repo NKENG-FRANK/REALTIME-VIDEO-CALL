@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -309,62 +312,84 @@ class _GlobalIncomingCallListenerState
 /// Automatically resolves startup navigation based on stored JWT validity:
 /// - If token is active & valid: automatically opens CallsHistoryPage.
 /// - If token is missing/expired: opens AuthPage.
-/// - While validating: displays a branded Callwave splash screen.
-class _AppAuthResolver extends StatelessWidget {
+/// - While validating: displays the Callwave splash screen with splach.png.
+class _AppAuthResolver extends StatefulWidget {
   const _AppAuthResolver({Key? key}) : super(key: key);
+
+  @override
+  State<_AppAuthResolver> createState() => _AppAuthResolverState();
+}
+
+class _AppAuthResolverState extends State<_AppAuthResolver> {
+  bool _minSplashElapsed = false;
+  Timer? _splashTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // On Windows or Linux, ensure splash screen is shown for at least 5 seconds
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux);
+    final duration = isDesktop ? const Duration(seconds: 5) : const Duration(milliseconds: 1500);
+
+    _splashTimer = Timer(duration, () {
+      if (mounted) {
+        setState(() {
+          _minSplashElapsed = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final authCtrl = context.watch<AuthController>();
 
-    // While verifying stored credentials on app launch
-    if (authCtrl.isInitializing) {
+    // Show splash screen while initializing or until minimum 5 seconds on Windows/Linux has elapsed
+    if (authCtrl.isInitializing || !_minSplashElapsed) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF3F7F4),
+        backgroundColor: Colors.white,
         body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Spacer(flex: 3),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520, maxHeight: 220),
+                  child: Image.asset(
+                    'assets/logo/splach.png',
+                    fit: BoxFit.contain,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.phone_in_talk_rounded,
-                  color: Colors.white,
-                  size: 38,
+                const Spacer(flex: 2),
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Callwave',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.primary,
-                  letterSpacing: 0.5,
+                const SizedBox(height: 18),
+                const Text(
+                  'Loading Callwave...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 22),
-              const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              ),
-            ],
+                const Spacer(flex: 1),
+              ],
+            ),
           ),
         ),
       );
