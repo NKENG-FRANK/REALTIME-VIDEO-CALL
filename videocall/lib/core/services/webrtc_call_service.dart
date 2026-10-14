@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -67,6 +68,13 @@ class WebRTCCallService extends ChangeNotifier {
 
   bool _disposed = false;
   bool _isFirstPeer = false;
+  bool _mediaFailed = false;
+  bool get mediaFailed => _mediaFailed;
+  String _mediaError = '';
+  String get mediaError => _mediaError;
+
+  // Auto-end timer when alone in room (1-on-1 calls only)
+  Timer? _aloneInRoomTimer;
 
   CallState _callState = CallState.idle;
   CallState get callState => _callState;
@@ -137,21 +145,40 @@ class WebRTCCallService extends ChangeNotifier {
 
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
+      // Google STUN (always try first)
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
+      {'urls': 'stun:stun2.l.google.com:19302'},
+      // Cloudflare STUN
+      {'urls': 'stun:stun.cloudflare.com:3478'},
+      // Open Relay TURN – multiple ports for firewall traversal
       {
-        'urls': 'turn:openrelay.metered.ca:80',
+        'urls': [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:80?transport=tcp',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443',
+        ],
         'username': 'openrelayproject',
         'credential': 'openrelayproject',
       },
+      // Metered.ca free TURN (alternative pool)
       {
-        'urls': 'turn:openrelay.metered.ca:443',
+        'urls': [
+          'turn:a.relay.metered.ca:80',
+          'turn:a.relay.metered.ca:80?transport=tcp',
+          'turn:a.relay.metered.ca:443',
+          'turn:a.relay.metered.ca:443?transport=tcp',
+          'turns:a.relay.metered.ca:443',
+        ],
         'username': 'openrelayproject',
         'credential': 'openrelayproject',
       },
     ],
     'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
+    'iceTransportPolicy': 'all', // try both STUN and TURN
   };
 
   late final Future<void> _initRenderersFuture = _initRenderers();
@@ -203,9 +230,21 @@ class WebRTCCallService extends ChangeNotifier {
   // ── Socket initialization ─────────────────────────────────────────────────
 
   Future<void> initializeSocket(String userToken) async {
+    // Extract userId from JWT payload first for 100% reliability with backend
+    try {
+      final parts = userToken.split('.');
+      if (parts.length == 3) {
+        final payloadString = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+        final payload = jsonDecode(payloadString);
+        if (payload['userId'] != null) {
+          _currentUserId = payload['userId'].toString();
+        }
+      }
+    } catch (_) {}
+
     final userMap = await AuthService.getCurrentUser();
-    if (userMap != null) {
-      _currentUserId = (userMap['id'] as String?) ?? (userMap['userId'] as String?);
+    if (_currentUserId == null && userMap != null) {
+      _currentUserId = (userMap['id']?.toString()) ?? (userMap['userId']?.toString());
     }
 
     if (_socket != null && _socket!.connected) return;
@@ -259,24 +298,28 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('room:joined', (data) async {
       debugPrint('[WebRTC] Joined room: $data');
       final map = data as Map<String, dynamic>?;
-      final rtpCaps = map?['rtpCapabilities'] as Map?;
       final existingParticipants = map?['participants'] as List?;
 
-      // Auto-enable SFU mode for group calls when router capabilities are provided
-      if (_isGroupCall && rtpCaps != null) {
-        debugPrint('[WebRTC-SFU] Initializing Mediasoup SFU router pipeline for group meeting...');
-        _isSfuMode = true;
-        await _initSfu(rtpCaps, existingParticipants);
-        return;
-      }
-
-      // Existing P2P mesh logic for 1-on-1 calls
+      // Default to robust P2P mesh for reliable media streaming
       _isSfuMode = false;
       if (existingParticipants != null && existingParticipants.isNotEmpty) {
         // We are a late joiner – existing participant(s) will send us offers.
         _isFirstPeer = false;
         _callState = CallState.connected;
         _callStartTime = DateTime.now();
+
+        // Safeguard watchdog: if an existing peer doesn't send an offer within 800ms, initiate offer to them
+        for (final p in existingParticipants) {
+          final pId = (p is Map) ? _peerIdFromData(Map<String, dynamic>.from(p)) : p.toString();
+          if (pId.isNotEmpty && pId != _currentUserId) {
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (!_peerConnections.containsKey(pId) && _callState != CallState.ended) {
+                debugPrint('[WebRTC] Offer watchdog (800ms): Initiating offer to existing peer $pId');
+                _createOffer(pId);
+              }
+            });
+          }
+        }
       } else {
         // We are first in the room – wait for others to join.
         _isFirstPeer = true;
@@ -322,6 +365,7 @@ class WebRTCCallService extends ChangeNotifier {
 
       _callState = CallState.connected;
       _callStartTime = DateTime.now();
+      _cancelAloneInRoomTimer();
       _safeNotify();
 
       // Fresh peer: create a dedicated offer for this specific peer.
@@ -514,26 +558,30 @@ class WebRTCCallService extends ChangeNotifier {
       }
       debugPrint('[WebRTC] Received call:ended payload: $data');
 
-      if (_isGroupCall) {
-        if (_isSfuMode) {
-          final targetPeer = endedBy ?? '';
-          if (targetPeer.isNotEmpty) _handleSfuPeerLeft(targetPeer);
-          if (_peerConsumers.isEmpty && _remoteStreams.isEmpty) {
-            endCall();
-          }
-          return;
+      // If a specific peer ended their call, just remove that peer connection.
+      // NEVER blindly call endCall() — only treat as peer-left.
+      if (endedBy != null && endedBy != _currentUserId) {
+        debugPrint('[WebRTC] Participant $endedBy ended their call, removing peer connection...');
+        _removePeerConnection(endedBy);
+      } else if (endedBy == null) {
+        // Unknown sender — treat as peer-left for ALL remaining peers
+        debugPrint('[WebRTC] call:ended with unknown sender — removing all peer connections');
+        final peerIds = _peerConnections.keys.toList();
+        for (final pid in peerIds) {
+          _removePeerConnection(pid);
         }
-        // In group calls, single participant exit does NOT terminate call for everyone.
-        if (endedBy != null) {
-          debugPrint('[WebRTC] Group call: Participant $endedBy left, removing peer connection...');
-          _removePeerConnection(endedBy);
-        }
-        if (_peerConnections.isEmpty) {
-          endCall();
-        }
+      } else {
+        // endedBy == _currentUserId — our own event echoed back, ignore
+        debugPrint('[WebRTC] Ignoring call:ended from self');
         return;
       }
-      endCall();
+
+      if (_peerConnections.isEmpty) {
+        debugPrint('[WebRTC] All peers left room — staying connected for new joiners or re-joins...');
+        _callState = CallState.connecting;
+        _safeNotify();
+        _startAloneInRoomTimer();
+      }
     });
 
     // ── room:participant_left ─────────────────────────────────────────────
@@ -553,17 +601,16 @@ class WebRTCCallService extends ChangeNotifier {
       final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
       final peerId = _peerIdFromData(map);
 
-      if (_isGroupCall) {
-        if (_isSfuMode) {
-          _handleSfuPeerLeft(peerId);
-          if (_peerConsumers.isEmpty && _remoteStreams.isEmpty) endCall();
-          return;
-        }
-        // Close only that peer's connection so the video tile disappears and call continues for others
-        _removePeerConnection(peerId);
-        if (_peerConnections.isEmpty) endCall();
-      } else {
-        endCall();
+      // Close only that peer's connection so the video tile disappears and call continues
+      _removePeerConnection(peerId);
+
+      // In all rooms (1-on-1 and group), stay alive waiting for new participants or re-joins
+      if (_peerConnections.isEmpty) {
+        debugPrint('[WebRTC] All peers left room — staying connected for new joiners or re-joins...');
+        _callState = CallState.connecting;
+        _safeNotify();
+        // For 1-on-1 calls, start a timer to auto-end after 45s alone
+        _startAloneInRoomTimer();
       }
     });
 
@@ -584,29 +631,69 @@ class WebRTCCallService extends ChangeNotifier {
         'autoGainControl': true,
       },
       'video': video
-          ? {
-              'mandatory': {
-                'minWidth': '480',
-                'minHeight': '360',
-                'maxWidth': '640',
-                'maxHeight': '480',
-                'maxFrameRate': '24',
-              },
-              'facingMode': 'user',
-              'optional': [],
-            }
+          ? (kIsWeb
+              ? {
+                  'width': {'ideal': 640},
+                  'height': {'ideal': 480},
+                  'frameRate': {'ideal': 24},
+                  'facingMode': 'user',
+                }
+              : {
+                  'mandatory': {
+                    'minWidth': '480',
+                    'minHeight': '360',
+                    'maxWidth': '640',
+                    'maxHeight': '480',
+                    'maxFrameRate': '24',
+                  },
+                  'facingMode': 'user',
+                  'optional': [],
+                })
           : false,
     };
 
     try {
       _localStream =
           await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _mediaFailed = false;
+      _mediaError = '';
       if (video) {
         localRenderer.srcObject = _localStream;
       }
+      debugPrint(
+        '[WebRTC] ✅ Local media acquired: '
+        'audio=${_localStream!.getAudioTracks().length} tracks, '
+        'video=${_localStream!.getVideoTracks().length} tracks',
+      );
       _safeNotify();
     } catch (e) {
-      debugPrint('[WebRTC] Error getting user media: $e');
+      debugPrint('[WebRTC] ❌ Error getting user media: $e');
+      _mediaFailed = true;
+      _mediaError = e.toString();
+      _safeNotify();
+      // Try audio-only fallback if video+audio failed
+      if (video) {
+        debugPrint('[WebRTC] Attempting audio-only fallback...');
+        try {
+          _localStream = await navigator.mediaDevices.getUserMedia({
+            'audio': {
+              'echoCancellation': true,
+              'noiseSuppression': true,
+              'autoGainControl': true,
+            },
+            'video': false,
+          });
+          _mediaFailed = false;
+          _mediaError = '';
+          debugPrint('[WebRTC] ✅ Audio-only fallback succeeded');
+          _safeNotify();
+        } catch (audioError) {
+          debugPrint('[WebRTC] ❌ Audio-only fallback also failed: $audioError');
+          _mediaFailed = true;
+          _mediaError = 'Camera and microphone unavailable: $audioError';
+          _safeNotify();
+        }
+      }
     }
   }
 
@@ -1721,20 +1808,16 @@ class WebRTCCallService extends ChangeNotifier {
     required MediaStream stream,
     RTCVideoRenderer? reuse,
   }) async {
-    if (reuse != null) {
-      // In-place re-init for a named field we can't replace
-      try { reuse.srcObject = null; } catch (_) {}
-      try { await reuse.initialize(); } catch (_) {}
-      reuse.srcObject = stream;
-      return reuse;
+    final target = reuse ?? old ?? RTCVideoRenderer();
+    try {
+      if (target.textureId == null) {
+        await target.initialize();
+      }
+      target.srcObject = stream;
+    } catch (e) {
+      debugPrint('[WebRTC] Safe renderer binding error: $e');
     }
-    // For map-stored renderers: dispose old, create fresh one
-    try { old?.srcObject = null; } catch (_) {}
-    try { await old?.dispose(); } catch (_) {}
-    final fresh = RTCVideoRenderer();
-    await fresh.initialize();
-    fresh.srcObject = stream;
-    return fresh;
+    return target;
   }
 
   /// Forces libwebrtc video encoder to re-initialize and generate an IDR keyframe
@@ -1796,11 +1879,8 @@ class WebRTCCallService extends ChangeNotifier {
     try {
       _makingOffer[peerId] = true;
       final pc = await _createPeerConnectionForPeer(peerId);
-      final offer = await pc.createOffer({
-        'offerToReceiveAudio': true,
-        'offerToReceiveVideo': _isVideoCall,
-        if (isIceRestart) 'iceRestart': true,
-      });
+
+      // Check signaling state BEFORE creating the offer to avoid wasted work.
       // A freshly-created peer connection reports signalingState as null,
       // which is functionally equivalent to "stable". Allow both.
       if (pc.signalingState != null &&
@@ -1810,6 +1890,13 @@ class WebRTCCallService extends ChangeNotifier {
         );
         return;
       }
+
+      debugPrint('[WebRTC] Creating offer for $peerId (localStream: ${_localStream != null}, tracks: ${_localStream?.getTracks().length ?? 0})');
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': _isVideoCall,
+        if (isIceRestart) 'iceRestart': true,
+      });
       final optimizedSdp = _optimizeSdp(
         offer.sdp ?? '',
         peerCount: _peerConnections.length,
@@ -1824,10 +1911,10 @@ class WebRTCCallService extends ChangeNotifier {
         if (isIceRestart) 'isIceRestart': true,
       });
       debugPrint(
-        '[WebRTC] Sent ${isIceRestart ? "ICE restart offer" : "offer"} to peer $peerId',
+        '[WebRTC] ✅ Sent ${isIceRestart ? "ICE restart offer" : "offer"} to peer $peerId',
       );
     } catch (e) {
-      debugPrint('[WebRTC] Error creating offer for $peerId: $e');
+      debugPrint('[WebRTC] ❌ Error creating offer for $peerId: $e');
     } finally {
       _makingOffer[peerId] = false;
     }
@@ -2011,10 +2098,34 @@ class WebRTCCallService extends ChangeNotifier {
     _safeNotify();
   }
 
+  // ── Alone-in-room auto-end (1-on-1 calls only) ─────────────────────────
+
+  void _startAloneInRoomTimer() {
+    _aloneInRoomTimer?.cancel();
+    if (_isGroupCall) {
+      // Group calls stay alive indefinitely waiting for participants
+      debugPrint('[WebRTC] Group call — staying alive for new joiners');
+      return;
+    }
+    debugPrint('[WebRTC] Starting 45s alone-in-room timer for 1-on-1 call');
+    _aloneInRoomTimer = Timer(const Duration(seconds: 45), () {
+      if (_peerConnections.isEmpty && _callState != CallState.ended) {
+        debugPrint('[WebRTC] Alone in room for 45s — auto-ending 1-on-1 call');
+        endCall();
+      }
+    });
+  }
+
+  void _cancelAloneInRoomTimer() {
+    _aloneInRoomTimer?.cancel();
+    _aloneInRoomTimer = null;
+  }
+
   // ── End Call ──────────────────────────────────────────────────────────────
 
   Future<void> endCall() async {
     if (_callState == CallState.ended) return;
+    _cancelAloneInRoomTimer();
     _stopSpeakerStatsMonitor();
 
     for (final timer in _iceDisconnectTimers.values) {
@@ -2129,6 +2240,7 @@ class WebRTCCallService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _cancelAloneInRoomTimer();
     _stopSpeakerStatsMonitor();
 
     for (final timer in _iceDisconnectTimers.values) {

@@ -489,7 +489,6 @@ async function leaveRoom(
   const remainingParticipants = getRoomParticipants(roomId);
   if (remainingParticipants.length > 0) {
     socket.to(roomId).emit('room:participant_left', { userId, roomId });
-    socket.to(roomId).emit('call:ended', { roomId, endedBy: userId });
   }
 
   // Publish to RabbitMQ asynchronously in background (non-blocking for instant signaling)

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/services/meeting_link_service.dart';
-import '../pages/connecting_page.dart';
+import '../pages/call_page.dart';
+import '../pages/audio_call_page.dart';
 
 /// Shows the Join Meeting modal dialog where users can paste a link or enter a Room ID.
 void showJoinMeetingDialog(BuildContext context) {
@@ -93,16 +94,22 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ConnectingPage(
-          callTitle: title,
-          roomId: parsed.roomId,
-          isVideoCall: _isVideo,
-          isGroupCall: true,
-          participantCount: 2,
-          recipientUserId: '',
-          recipientName: title,
-          recipientMatricule: parsed.roomId,
-        ),
+        builder: (_) => _isVideo
+            ? CallPage(
+                callTitle: title,
+                roomId: parsed.roomId,
+                isVideoCall: true,
+                isGroupCall: true,
+                participantCount: 2,
+              )
+            : AudioCallPage(
+                callTitle: title,
+                roomId: parsed.roomId,
+                contactName: title,
+                contactMatricule: parsed.roomId,
+                isGroupCall: true,
+                participantCount: 2,
+              ),
       ),
     );
   }
