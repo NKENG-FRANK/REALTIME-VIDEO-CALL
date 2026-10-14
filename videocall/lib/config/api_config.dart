@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   // Network host of the machine running the backend services
-  static const String serverHost = String.fromEnvironment('SERVER_IP', defaultValue: '192.168.50.123');
+  static const String serverHost = String.fromEnvironment('SERVER_IP', defaultValue: '10.105.180.95');
   static const bool isSecure = bool.fromEnvironment('IS_SECURE', defaultValue: false);
 
   static String get host => kIsWeb ? Uri.base.host : serverHost;
