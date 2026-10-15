@@ -332,12 +332,14 @@ class _SidebarUserCard extends StatelessWidget {
 
 class _BrandMark extends StatelessWidget {
   @override
-  Widget build(BuildContext context) => Container(
-        width: 25,
-        height: 25,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(7)),
-        child: const Text('C', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900, fontSize: 13)),
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.asset(
+          'assets/logo/logo.png',
+          width: 26,
+          height: 26,
+          fit: BoxFit.contain,
+        ),
       );
 }
 
