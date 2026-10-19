@@ -1,0 +1,65 @@
+name: Build Android App
+
+on:
+  push:
+    branches: [ frank, main, master ]
+  pull_request:
+    branches: [ frank, main, master ]
+  workflow_dispatch:
+    inputs:
+      server_ip:
+        description: 'Server IP or Domain (optional, for --dart-define=SERVER_IP)'
+        required: false
+        default: ''
+      is_secure:
+        description: 'Use HTTPS / WSS (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  build-android:
+    name: Build Android Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter setup
+        run: flutter doctor -v
+
+      - name: Install dependencies
+        working-directory: videocall
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        working-directory: videocall
+        run: |
+          DART_DEFINES=""
+          if [ -n "${{ github.event.inputs.server_ip }}" ]; then
+            DART_DEFINES="$DART_DEFINES --dart-define=SERVER_IP=${{ github.event.inputs.server_ip }}"
+          fi
+          if [ "${{ github.event.inputs.is_secure }}" = "true" ]; then
+            DART_DEFINES="$DART_DEFINES --dart-define=IS_SECURE=true"
+          fi
+          flutter build apk --release $DART_DEFINES --verbose
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: callwave-android-release-apk
+          path: videocall/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error

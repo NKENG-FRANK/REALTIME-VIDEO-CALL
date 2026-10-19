@@ -124,19 +124,21 @@ class _CallPageState extends State<CallPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.callBackground,
-      body: Column(
-        children: [
-          _buildTopBar(),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isMobile = constraints.maxWidth < 760;
-                return isMobile ? _buildMobileLayout() : _buildDesktopLayout();
-              },
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildTopBar(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isMobile = constraints.maxWidth < 760;
+                  return isMobile ? _buildMobileLayout() : _buildDesktopLayout();
+                },
+              ),
             ),
-          ),
-          _buildBottomControls(),
-        ],
+            _buildBottomControls(),
+          ],
+        ),
       ),
     );
   }
@@ -149,98 +151,119 @@ class _CallPageState extends State<CallPage> {
   }
 
   Widget _buildTopBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.85),
-        border: const Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _hangUpAndExit,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 10 : 20,
+            vertical: isMobile ? 8 : 12,
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.callTitle,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                InkWell(
-                  onTap: () => MeetingLinkService.showShareModal(
-                    context,
-                    roomId: widget.roomId,
-                    isVideo: true,
-                    title: widget.callTitle,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Room: ${_formatRoomId(widget.roomId)} • ${_callService.callState.name}',
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.85),
+            border: const Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                padding: EdgeInsets.zero,
+                constraints: isMobile ? const BoxConstraints(minWidth: 36, minHeight: 36) : null,
+                onPressed: _hangUpAndExit,
+              ),
+              SizedBox(width: isMobile ? 4 : 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.callTitle,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: isMobile ? 14 : 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.link_rounded, size: 14, color: AppColors.primary),
-                    ],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    InkWell(
+                      onTap: () => MeetingLinkService.showShareModal(
+                        context,
+                        roomId: widget.roomId,
+                        isVideo: true,
+                        title: widget.callTitle,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Room: ${_formatRoomId(widget.roomId)} • ${_callService.callState.name}',
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.link_rounded, size: 13, color: AppColors.primary),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.share_rounded, size: 19),
+                padding: EdgeInsets.zero,
+                constraints: isMobile ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
+                tooltip: 'Share Meeting Link',
+                color: AppColors.primary,
+                onPressed: () => MeetingLinkService.showShareModal(
+                  context,
+                  roomId: widget.roomId,
+                  isVideo: true,
+                  title: widget.callTitle,
+                ),
+              ),
+              if (widget.isGroupCall || _callService.remoteRenderers.length > 1) ...[
+                IconButton(
+                  icon: Icon(
+                    _isSpotlightLayout ? Icons.grid_view_rounded : Icons.featured_video_outlined,
+                    color: _isSpotlightLayout ? AppColors.primary : AppColors.textPrimary,
+                    size: 20,
                   ),
+                  padding: EdgeInsets.zero,
+                  constraints: isMobile ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
+                  tooltip: _isSpotlightLayout ? 'Switch to Grid View' : 'Switch to Spotlight View',
+                  onPressed: () {
+                    setState(() {
+                      _isSpotlightLayout = !_isSpotlightLayout;
+                    });
+                  },
                 ),
               ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.share_rounded, size: 20),
-            tooltip: 'Share Meeting Link',
-            color: AppColors.primary,
-            onPressed: () => MeetingLinkService.showShareModal(
-              context,
-              roomId: widget.roomId,
-              isVideo: true,
-              title: widget.callTitle,
-            ),
-          ),
-          if (widget.isGroupCall || _callService.remoteRenderers.length > 1) ...[
-            IconButton(
-              icon: Icon(
-                _isSpotlightLayout ? Icons.grid_view_rounded : Icons.featured_video_outlined,
-                color: _isSpotlightLayout ? AppColors.primary : AppColors.textPrimary,
+              IconButton(
+                icon: const Icon(Icons.cameraswitch, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: isMobile ? const BoxConstraints(minWidth: 34, minHeight: 34) : null,
+                tooltip: 'Switch Camera',
+                onPressed: () => _callService.switchCamera(),
               ),
-              tooltip: _isSpotlightLayout ? 'Switch to Grid View' : 'Switch to Spotlight View',
-              onPressed: () {
-                setState(() {
-                  _isSpotlightLayout = !_isSpotlightLayout;
-                });
-              },
-            ),
-          ],
-          IconButton(
-            icon: const Icon(Icons.cameraswitch),
-            tooltip: 'Switch Camera',
-            onPressed: () => _callService.switchCamera(),
+              const SizedBox(width: 2),
+              SignalIndicator(
+                strength: _callService.localNetworkQuality.bars,
+                showLabel: !isMobile,
+                tooltip: _callService.localNetworkQuality.summaryText,
+              ),
+            ],
           ),
-          const SizedBox(width: 4),
-          SignalIndicator(
-            strength: _callService.localNetworkQuality.bars,
-            showLabel: true,
-            tooltip: _callService.localNetworkQuality.summaryText,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1236,8 +1259,9 @@ class _CallPageState extends State<CallPage> {
           Positioned(
             left: 10,
             bottom: 10,
+            right: onPinTap != null ? 70 : 10,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
               decoration: BoxDecoration(
                 color: isSpeaking
                     ? const Color(0xE6064E3B)
@@ -1253,26 +1277,29 @@ class _CallPageState extends State<CallPage> {
                 children: [
                   Icon(
                     isMuted ? Icons.mic_off : Icons.mic,
-                    size: 14,
+                    size: 13,
                     color: isMuted ? AppColors.callDecline : AppColors.onlineGreen,
                   ),
                   if (isSpeaking) ...[
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 4),
                     VoiceWaveIndicator(
                       isSpeaking: true,
                       audioLevel: audioLevel,
-                      maxHeight: 12,
-                      barWidth: 2,
+                      maxHeight: 11,
+                      barWidth: 1.8,
                       barCount: 3,
                     ),
                   ],
-                  const SizedBox(width: 6),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: isSpeaking ? FontWeight.w700 : FontWeight.w600,
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: isSpeaking ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -1285,6 +1312,9 @@ class _CallPageState extends State<CallPage> {
   }
 
   Widget _buildOneOnOneVideoArea() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
     final isRemoteSpeaking = _callService.activeSpeakerId != null &&
         _callService.activeSpeakerId != 'local';
     final remoteAudioLevel = isRemoteSpeaking
@@ -1332,9 +1362,9 @@ class _CallPageState extends State<CallPage> {
         // Reconnecting Notice Banner (Top Left)
         if (_callService.isAnyReconnecting)
           Positioned(
-            top: 20,
-            left: 20,
-            right: 175,
+            top: isMobile ? 12 : 20,
+            left: isMobile ? 12 : 20,
+            right: isMobile ? 124 : 175,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
@@ -1377,11 +1407,11 @@ class _CallPageState extends State<CallPage> {
           )
         else if (remoteQuality.isPoor)
           Positioned(
-            top: 20,
-            left: 20,
-            right: 175,
+            top: isMobile ? 12 : 20,
+            left: isMobile ? 12 : 20,
+            right: isMobile ? 124 : 175,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: const Color(0xE67F1D1D),
                 borderRadius: BorderRadius.circular(20),
@@ -1401,8 +1431,8 @@ class _CallPageState extends State<CallPage> {
                   Expanded(
                     child: Text(
                       remoteQuality.packetLossPercent > 0
-                          ? 'Poor network • ${remoteQuality.packetLossPercent}% packet loss'
-                          : 'Poor network • Latency ${remoteQuality.rttMs.toStringAsFixed(0)}ms',
+                          ? 'Poor • ${remoteQuality.packetLossPercent}% loss'
+                          : 'Poor • ${remoteQuality.rttMs.toStringAsFixed(0)}ms',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -1411,12 +1441,12 @@ class _CallPageState extends State<CallPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   SignalIndicator(
                     strength: remoteQuality.bars,
                     maxBars: 4,
-                    barWidth: 2.5,
-                    maxBarHeight: 11,
+                    barWidth: 2.2,
+                    maxBarHeight: 10,
                     tooltip: remoteQuality.summaryText,
                   ),
                 ],
@@ -1427,9 +1457,10 @@ class _CallPageState extends State<CallPage> {
         // Remote Active Speaker Floating Pill (Bottom Left)
         if (isRemoteSpeaking)
           Positioned(
-            left: 20,
-            bottom: 24,
+            left: isMobile ? 12 : 20,
+            bottom: isMobile ? 16 : 24,
             child: Container(
+              constraints: BoxConstraints(maxWidth: screenWidth - (isMobile ? 32 : 50)),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: const Color(0xE6064E3B),
@@ -1454,12 +1485,15 @@ class _CallPageState extends State<CallPage> {
                     barCount: 4,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '${widget.callTitle} is speaking',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  Flexible(
+                    child: Text(
+                      '${widget.callTitle} is speaking',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -1469,10 +1503,10 @@ class _CallPageState extends State<CallPage> {
 
         // Floating Video Preview (Picture-in-Picture) • Tap to Swap
         Positioned(
-          right: 20,
-          top: 20,
-          width: 140,
-          height: 190,
+          right: isMobile ? 12 : 20,
+          top: isMobile ? 12 : 20,
+          width: isMobile ? 104 : 140,
+          height: isMobile ? 146 : 190,
           child: GestureDetector(
             onTap: () {
               setState(() {

@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config/theme/app_colors.dart';
 import 'config/theme/app_theme.dart';
 import 'core/l10n/app_localizations_delegate.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/background_call_service.dart';
 import 'core/services/ringtone_service.dart';
 import 'core/services/meeting_link_service.dart';
 import 'core/services/signaling_service.dart';
@@ -26,12 +30,78 @@ import 'features/call/presentation/pages/connecting_page.dart';
 import 'features/call/presentation/pages/call_page.dart';
 import 'features/call/presentation/pages/audio_call_page.dart';
 import 'features/call/presentation/pages/call_ended_page.dart';
+import 'core/services/desktop_tray_service.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_callkit_incoming/entities/call_event.dart';
 
 /// Global navigator key — lets SignalingService push routes from outside the
 /// widget tree (e.g. when an incoming call arrives while any screen is open).
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() {
+Map<String, dynamic>? _pendingNotificationAcceptedCall;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await BackgroundCallService.initialize();
+  await DesktopTrayService().initialize();
+
+  final isMobile = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+       defaultTargetPlatform == TargetPlatform.iOS);
+
+  if (isMobile) {
+    try {
+      // Local notifications response handler for call notification click / action
+      final notifications = FlutterLocalNotificationsPlugin();
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const initSettings = InitializationSettings(
+        android: androidInit,
+        iOS: DarwinInitializationSettings(),
+      );
+
+      await notifications.initialize(
+        settings: initSettings,
+        onDidReceiveNotificationResponse: (response) async {
+          final payload = response.payload;
+          if (payload != null && payload.isNotEmpty) {
+            try {
+              final data = jsonDecode(payload) as Map<String, dynamic>;
+              if (response.actionId == 'accept_call') {
+                await BackgroundCallService.clearIncomingNotification();
+                _pendingNotificationAcceptedCall = data;
+              } else if (response.actionId == 'decline_call') {
+                await BackgroundCallService.clearIncomingNotification();
+              } else {
+                // Notification body clicked: set pending incoming call to show ring page
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString(BackgroundCallService.pendingIncomingCallKey, payload);
+              }
+            } catch (_) {}
+          }
+        },
+      );
+
+      final launchDetails = await notifications.getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp == true) {
+        final response = launchDetails?.notificationResponse;
+        if (response?.payload != null && response!.payload!.isNotEmpty) {
+          final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+          if (response.actionId == 'accept_call') {
+            await BackgroundCallService.clearIncomingNotification();
+            _pendingNotificationAcceptedCall = data;
+          } else if (response.actionId == 'decline_call') {
+            await BackgroundCallService.clearIncomingNotification();
+          } else {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(BackgroundCallService.pendingIncomingCallKey, response.payload!);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[main] Local notifications init error: $e');
+    }
+  }
+
   runApp(const MyApp());
 }
 
@@ -61,12 +131,15 @@ class MyApp extends StatelessWidget {
             settingsCtrl.seedFromUser(user);
             // Connect the persistent signaling socket with the real JWT
             signalingService.connect(token);
+            // Also start background call listener
+            BackgroundCallService.start(token);
           };
 
           if (authCtrl.isAuthenticated && !signalingService.isConnected) {
             AuthService.getToken().then((token) {
               if (token != null && token.isNotEmpty) {
                 signalingService.connect(token);
+                BackgroundCallService.start(token);
               }
             });
           }
@@ -172,8 +245,167 @@ class _GlobalIncomingCallListener extends StatefulWidget {
 }
 
 class _GlobalIncomingCallListenerState
-    extends State<_GlobalIncomingCallListener> {
+    extends State<_GlobalIncomingCallListener> with WidgetsBindingObserver {
   bool _showingIncomingCall = false;
+  StreamSubscription? _callKitSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPendingCalls();
+    });
+
+    _callKitSubscription = FlutterCallkitIncoming.onEvent.listen((event) {
+      if (event is CallEventActionCallAccept && mounted) {
+        final extra = event.callKitParams.extra;
+        if (extra != null) {
+          _navigateToCallRoom(extra);
+        }
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingCalls();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _callKitSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkPendingCalls() async {
+    // 1. Check if user accepted the call via notification action
+    if (_pendingNotificationAcceptedCall != null && mounted) {
+      final call = _pendingNotificationAcceptedCall!;
+      _pendingNotificationAcceptedCall = null;
+      _navigateToCallRoom(call);
+      return;
+    }
+
+    // 2. Check if user accepted from CallKit while closed
+    final acceptedCall = await BackgroundCallService.checkAndConsumeAcceptedCall();
+    if (acceptedCall != null && mounted) {
+      _navigateToCallRoom(acceptedCall);
+      return;
+    }
+
+    // 3. Check if user tapped incoming call notification to open the ring page of the app
+    final incomingCall = await BackgroundCallService.checkAndConsumeIncomingCall();
+    if (incomingCall != null && mounted) {
+      _showIncomingCallFromData(incomingCall);
+    }
+  }
+
+  void _showIncomingCallFromData(Map<String, dynamic> data) {
+    if (_showingIncomingCall) return;
+    _showingIncomingCall = true;
+
+    final roomId = data['roomId']?.toString() ?? '';
+    final callerName = data['callerName']?.toString() ?? 'Caller';
+    final callerUserId = data['callerUserId']?.toString() ?? '';
+    final callerMatricule = data['callerMatricule']?.toString() ?? '';
+    final rawCallType = (data['callType']?.toString() ?? '').toUpperCase();
+    final isVideoCall = rawCallType.contains('VIDEO') || data['isVideoCall'] == true || data['isVideoCall'] == 'true';
+    final isGroupCall = rawCallType.contains('GROUP') || data['isGroupCall'] == true || data['isGroupCall'] == 'true';
+    final groupTitle = data['groupTitle']?.toString();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      navigatorKey.currentState?.push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => IncomingCallPage(
+            callerName: callerName,
+            callerMatricule: callerMatricule,
+            roomId: roomId,
+            isVideoCall: isVideoCall,
+            isGroupCall: isGroupCall,
+            groupTitle: groupTitle,
+            onAccept: () {
+              BackgroundCallService.clearIncomingNotification();
+              _showingIncomingCall = false;
+              _navigateToCallRoom(data);
+            },
+            onDecline: () {
+              BackgroundCallService.clearIncomingNotification();
+              _showingIncomingCall = false;
+              try {
+                context.read<SignalingService>().declineCall(callerUserId, roomId);
+              } catch (_) {}
+            },
+          ),
+        ),
+      ).then((_) {
+        _showingIncomingCall = false;
+        RingtoneService().stop();
+        BackgroundCallService.clearIncomingNotification();
+      });
+    });
+  }
+
+  void _navigateToCallRoom(Map<String, dynamic> data) {
+    final roomId = data['roomId']?.toString() ?? '';
+    final callerName = data['callerName']?.toString() ?? 'Caller';
+    final callerUserId = data['callerUserId']?.toString() ?? '';
+    final callerMatricule = data['callerMatricule']?.toString() ?? '';
+    final rawCallType = (data['callType']?.toString() ?? '').toUpperCase();
+    final isVideoCall = rawCallType.contains('VIDEO') || data['isVideoCall'] == true || data['isVideoCall'] == 'true';
+    final isGroupCall = rawCallType.contains('GROUP') || data['isGroupCall'] == true || data['isGroupCall'] == 'true';
+    final groupTitle = data['groupTitle']?.toString();
+
+    if (roomId.isEmpty) return;
+
+    // Log call
+    final parts = callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final initials = parts.isEmpty
+        ? 'U'
+        : (parts.length == 1
+            ? parts[0][0].toUpperCase()
+            : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+    final log = CallLog(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: callerName,
+      initials: initials,
+      colorValue: 0xFF8752F4,
+      time: 'Just now',
+      duration: 'Connected',
+      isOutgoing: false,
+      isMissed: false,
+      contactUserId: callerUserId,
+      isGroup: isGroupCall,
+    );
+    try {
+      context.read<CallsController>().addCallLog(log);
+    } catch (_) {}
+
+    navigatorKey.currentState?.push(
+      MaterialPageRoute<void>(
+        builder: (_) => isVideoCall
+            ? CallPage(
+                callTitle: isGroupCall ? (groupTitle ?? 'Group Video Call') : 'Video Call – $callerName',
+                roomId: roomId,
+                isVideoCall: true,
+                isGroupCall: isGroupCall,
+                participantCount: 2,
+              )
+            : AudioCallPage(
+                callTitle: isGroupCall ? (groupTitle ?? 'Group Audio Call') : 'Audio Call – $callerName',
+                roomId: roomId,
+                contactName: callerName,
+                contactMatricule: callerMatricule,
+                isGroupCall: isGroupCall,
+                participantCount: 2,
+              ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,6 +420,8 @@ class _GlobalIncomingCallListenerState
       }
     } else if (!_showingIncomingCall) {
       _showingIncomingCall = true;
+      // On Windows / Desktop: unminimize, restore, and focus the window
+      DesktopTrayService().bringToFrontForCall();
       // Push after the current frame so we don't call setState/Navigator
       // during a build cycle.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -230,6 +464,7 @@ class _GlobalIncomingCallListenerState
 
                     // Clear the notification first
                     context.read<SignalingService>().clearIncomingCall();
+                    BackgroundCallService.clearIncomingNotification();
                     _showingIncomingCall = false;
                     // Navigate to the call screen with real room data
                     navigatorKey.currentState?.pushReplacement(
@@ -285,6 +520,7 @@ class _GlobalIncomingCallListenerState
                     );
                     context.read<CallsController>().addCallLog(log);
 
+                    BackgroundCallService.clearIncomingNotification();
                     context.read<SignalingService>().declineCall(
                       incoming.callerUserId,
                       incoming.roomId,
@@ -298,6 +534,7 @@ class _GlobalIncomingCallListenerState
               // If the user dismisses via the back button, reset the flag and stop ringtone
               _showingIncomingCall = false;
               RingtoneService().stop();
+              BackgroundCallService.clearIncomingNotification();
               if (mounted) {
                 context.read<SignalingService>().clearIncomingCall();
               }

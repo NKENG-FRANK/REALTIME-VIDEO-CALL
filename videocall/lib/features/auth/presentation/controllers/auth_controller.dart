@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/background_call_service.dart';
 
 class AuthController extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -256,6 +257,7 @@ class AuthController extends ChangeNotifier {
 
   void signOut() async {
     await AuthService.logout();
+    await BackgroundCallService.stop();
     _isAuthenticated = false;
     _currentUser = null;
     _clearForm();

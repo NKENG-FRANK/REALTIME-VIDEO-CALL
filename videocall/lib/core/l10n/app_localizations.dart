@@ -79,6 +79,45 @@ class AppLocalizations {
           : 'Matricule must be >8 characters and start or end with a letter.';
   String get passwordError =>
       isFrench ? 'Le mot de passe est requis.' : 'Password is required.';
+  String get rememberMe =>
+      isFrench ? 'Se souvenir de moi' : 'Remember me';
+  String get forgotPassword =>
+      isFrench ? 'Mot de passe oublié ?' : 'Forgot password?';
+  String get showPasswordText => isFrench ? 'Afficher' : 'Show';
+  String get hidePasswordText => isFrench ? 'Masquer' : 'Hide';
+  String get termsAgreement => isFrench
+      ? 'En créant un compte, vous acceptez les Conditions d\'utilisation et la Politique de confidentialité de Callwave.'
+      : 'By creating an account, you agree to Callwave\'s Terms of Service and Privacy Policy.';
+  String get officialSecurityTag => isFrench
+      ? 'Chiffrement de bout en bout • CENADI Cameroun'
+      : 'End-to-End Encryption • CENADI Cameroon';
+  String get officialPortalTag => isFrench
+      ? 'Plateforme Officielle CENADI'
+      : 'Official CENADI Platform';
+  String get matriculeHint => isFrench
+      ? 'Ex. A1234567 ou 1234567A'
+      : 'E.g. A1234567 or 1234567A';
+  String get fullNameHint => isFrench
+      ? 'Ex. Jean Paul Biya'
+      : 'E.g. John Doe';
+  String get hdVideoFeature => isFrench
+      ? 'Appels Audio & Vidéo HD'
+      : 'HD Audio & Video Calls';
+  String get hdVideoFeatureDesc => isFrench
+      ? 'Communications cryptées en temps réel avec WebRTC'
+      : 'Encrypted real-time communication via WebRTC';
+  String get directoryFeature => isFrench
+      ? 'Annuaire Sécurisé'
+      : 'Secure Directory';
+  String get directoryFeatureDesc => isFrench
+      ? 'Collaboration instantanée entre agents CENADI'
+      : 'Instant collaboration between CENADI agents';
+  String get confidentialFeature => isFrench
+      ? 'Haute Confidentialité'
+      : 'High Confidentiality';
+  String get confidentialFeatureDesc => isFrench
+      ? 'Infrastructure souveraine dédiée à l\'État'
+      : 'Sovereign infrastructure dedicated to the State';
 
   // ─── Calls / Call History ───────────────────────────────────────────────────
 
