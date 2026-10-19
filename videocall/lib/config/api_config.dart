@@ -2,13 +2,43 @@ import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   // Network host of the machine running the backend services
-  static const String serverHost = String.fromEnvironment('SERVER_IP', defaultValue: '192.168.50.123');
+  static const String _configuredHost = String.fromEnvironment('SERVER_IP', defaultValue: '');
   static const bool isSecure = bool.fromEnvironment('IS_SECURE', defaultValue: false);
 
-  static String get host => kIsWeb ? Uri.base.host : serverHost;
+  // LAN IP of the current development machine
+  static const String defaultLanIp = '192.168.50.72';
+
+  static String get host {
+    if (_configuredHost.isNotEmpty) {
+      return _configuredHost;
+    }
+    if (kIsWeb) {
+      final webHost = Uri.base.host;
+      return webHost.isNotEmpty ? webHost : 'localhost';
+    }
+    // Desktop platforms run locally on the machine hosting the backend
+    if (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      return 'localhost';
+    }
+    // Physical mobile devices / emulators use the host machine's LAN IP
+    return defaultLanIp;
+  }
+
   static bool get _useSecure => kIsWeb
-      ? (Uri.base.scheme.startsWith('https') || (!Uri.base.host.contains('192.168.') && !Uri.base.host.contains('10.') && Uri.base.host != 'localhost' && !kDebugMode))
-      : (isSecure && !host.contains('192.168.') && !host.contains('10.') && host != 'localhost');
+      ? (Uri.base.scheme.startsWith('https') ||
+          (!Uri.base.host.contains('192.168.') &&
+              !Uri.base.host.contains('10.') &&
+              Uri.base.host != 'localhost' &&
+              Uri.base.host != '127.0.0.1' &&
+              !kDebugMode))
+      : (isSecure &&
+          !host.contains('192.168.') &&
+          !host.contains('10.') &&
+          host != 'localhost' &&
+          host != '127.0.0.1');
+
   static String get httpScheme => _useSecure ? 'https' : 'http';
   static String get wsScheme => _useSecure ? 'wss' : 'ws';
 

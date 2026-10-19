@@ -38,26 +38,36 @@ class CallControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.92),
-        border: const Border(
-          top: BorderSide(color: Color(0xFFDCE7DF)),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Left: user info
-          _buildUserInfo(),
-          const Spacer(),
-          // Center: control buttons
-          _buildControlButtons(),
-          const Spacer(),
-          // Right: participant count
-          _buildParticipantCount(),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 12 : 20,
+            vertical: isMobile ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.92),
+            border: const Border(
+              top: BorderSide(color: Color(0xFFDCE7DF)),
+            ),
+          ),
+          child: isMobile
+              ? Center(child: _buildControlButtons())
+              : Row(
+                  children: [
+                    // Left: user info
+                    _buildUserInfo(),
+                    const Spacer(),
+                    // Center: control buttons
+                    _buildControlButtons(),
+                    const Spacer(),
+                    // Right: participant count
+                    _buildParticipantCount(),
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -110,14 +120,19 @@ class CallControls extends StatelessWidget {
   }
 
   Widget _buildControlButtons() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: controls.map((control) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: _ControlButton(item: control),
-        );
-      }).toList(),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: controls.map((control) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: _ControlButton(item: control),
+          );
+        }).toList(),
+      ),
     );
   }
 

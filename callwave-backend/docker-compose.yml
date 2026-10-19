@@ -17,7 +17,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U callwave -d callwave"]
+      test: [ "CMD-SHELL", "pg_isready -U callwave -d callwave" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,7 +32,7 @@ services:
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,10 +47,10 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672"   # AMQP
+      - "5672:5672" # AMQP
       - "15672:15672" # Management UI
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -88,7 +88,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -104,7 +104,7 @@ services:
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 3000  # base port; service listens on PORT+1 = 3001
+      PORT: 3000 # base port; service listens on PORT+1 = 3001
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
@@ -114,7 +114,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -132,12 +132,12 @@ services:
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
-      PORT: 3000  # base port; service listens on PORT+2 = 3002
+      PORT: 3000 # base port; service listens on PORT+2 = 3002
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
       # IMPORTANT: Set to your host/public IP so Mediasoup ICE candidates are reachable
-      ANNOUNCED_IP: ${ANNOUNCED_IP:-192.168.50.123}
+      ANNOUNCED_IP: ${ANNOUNCED_IP:-172.20.80.1}
     depends_on:
       redis:
         condition: service_healthy
@@ -147,7 +147,7 @@ services:
     # Uncomment below for production on Linux hosts:
     # network_mode: host
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      test: [ "CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1))\" || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 5

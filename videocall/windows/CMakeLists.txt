@@ -57,6 +57,11 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# flutter_local_notifications_windows requires ATL headers (atlbase.h) that
+# are not present in VS Build Tools by default. The notification functionality
+# is mobile-only (BackgroundCallService); desktop uses DesktopTrayService.
+list(REMOVE_ITEM FLUTTER_FFI_PLUGIN_LIST "flutter_local_notifications_windows")
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
