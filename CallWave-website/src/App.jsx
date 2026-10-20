@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import brandImage from '../Calwave Glass Background.png'
 import './App.css'
 
 const navItems = ['Home', 'About us', 'Download']
@@ -235,7 +234,11 @@ function App() {
     <div className="callwave-app">
       <header className="topbar">
         <div className="brand-wrap">
-          <img src={brandImage} alt="CallWave logo" className="brand-logo" />
+          <img
+            src="/callwave-glass-logo.png"
+            alt="CallWave"
+            className="brand-logo"
+          />
         </div>
 
         <nav className="main-nav" aria-label="Main navigation">

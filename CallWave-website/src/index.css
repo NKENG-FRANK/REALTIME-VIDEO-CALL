@@ -3,7 +3,7 @@
   line-height: 1.5;
   font-weight: 400;
   color: #172c22;
-  background: #f7f6ed;
+  background: #f4f7ef;
   --color-ink: #172c22;
   --color-green: #176447;
   --color-green-light: #e8f1e8;
@@ -24,14 +24,14 @@
 }
 
 html {
-  background: #f7f6ed;
+  background: #f4f7ef;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f7f6ed;
+  background: #f4f7ef url('/callwave-background.svg') center / cover fixed no-repeat;
 }
 
 button,

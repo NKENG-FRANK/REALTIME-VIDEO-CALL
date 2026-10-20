@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <linearGradient id="canvas" x1="90" y1="30" x2="1510" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFCF7"/>
+      <stop offset="1" stop-color="#EEF4E8"/>
+    </linearGradient>
+    <linearGradient id="yellow" x1="525" y1="170" x2="1020" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7C64C"/>
+      <stop offset=".48" stop-color="#F5DE7D"/>
+      <stop offset="1" stop-color="#D4B83E"/>
+    </linearGradient>
+    <linearGradient id="green" x1="1085" y1="260" x2="830" y2="820" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#84B765"/>
+      <stop offset=".45" stop-color="#388451"/>
+      <stop offset="1" stop-color="#176044"/>
+    </linearGradient>
+    <linearGradient id="red" x1="840" y1="840" x2="475" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A94E46"/>
+      <stop offset=".52" stop-color="#C46C59"/>
+      <stop offset="1" stop-color="#D88B68"/>
+    </linearGradient>
+    <linearGradient id="cornerYellow" x1="0" y1="0" x2="480" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0A8"/>
+      <stop offset=".52" stop-color="#EBCB59"/>
+      <stop offset="1" stop-color="#F8E69A"/>
+    </linearGradient>
+    <linearGradient id="cornerGreen" x1="1450" y1="0" x2="1230" y2="850" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8DBB75"/>
+      <stop offset=".42" stop-color="#287A53"/>
+      <stop offset="1" stop-color="#14553C"/>
+    </linearGradient>
+    <linearGradient id="cornerGreenLight" x1="1450" y1="120" x2="1340" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9D887"/>
+      <stop offset=".55" stop-color="#64A95F"/>
+      <stop offset="1" stop-color="#23764D"/>
+    </linearGradient>
+    <linearGradient id="cornerFold" x1="1260" y1="320" x2="1470" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E4937"/>
+      <stop offset=".52" stop-color="#1D6546"/>
+      <stop offset="1" stop-color="#75AC5C"/>
+    </linearGradient>
+    <linearGradient id="cornerLowerFold" x1="1200" y1="800" x2="1540" y2="580" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#194F39"/>
+      <stop offset=".62" stop-color="#347D4D"/>
+      <stop offset="1" stop-color="#A9CE74"/>
+    </linearGradient>
+    <linearGradient id="paintLight" x1="580" y1="180" x2="980" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF4B8" stop-opacity=".88"/>
+      <stop offset="1" stop-color="#FFF4B8" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softShadow" x="790" y="-40" width="900" height="1150" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+  </defs>
+
+  <path fill="url(#canvas)" d="M0 0h1600v1000H0z"/>
+
+  <path d="M-130-100 466 496Q490 520 466 544L-50 1060" stroke="#E9CB55" stroke-width="76"/>
+  <path d="M-130-100 466 496Q490 520 466 544L-50 1060" stroke="#FCFCF7" stroke-width="56"/>
+  <path d="M-130-100 466 496Q490 520 466 544L-50 1060" stroke="#7CAF55" stroke-width="36"/>
+  <path d="M-130-100 466 496Q490 520 466 544L-50 1060" stroke="#F8F8F1" stroke-width="22"/>
+  <path d="M-130-100 466 496Q490 520 466 544L-50 1060" stroke="#286E47" stroke-width="10"/>
+
+  <path fill="#234E37" fill-opacity=".09" filter="url(#softShadow)" d="M1210-80c-170 98-261 223-204 340 34 70 109 85 116 142 10 79-95 114-142 193-73 123-31 255 93 437h527V-80h-390Z"/>
+  <path fill="url(#cornerYellow)" fill-opacity=".68" d="M1271-70c-130 124-255 222-221 334 25 83 127 113 111 181-13 57-119 89-168 166-75 117-48 260 94 459h513V-70h-329Z"/>
+  <path fill="url(#cornerGreen)" fill-opacity=".76" d="M1415-80c-176 95-293 210-270 328 16 83 119 132 101 202-14 57-101 86-137 159-54 110 8 229 118 351 76-102 39-175-5-241-45-68-72-120-34-165 33-40 106-52 145-108 64-92-12-198-28-273-13-60 15-144 110-253Z"/>
+  <path fill="url(#cornerGreenLight)" fill-opacity=".78" d="M1572-60c-124 59-234 139-258 231-24 91 36 157 7 222-23 52-96 72-125 134-42 88 13 177 76 254 12-81-3-130-16-178-17-62-18-103 24-138 39-32 99-42 127-93 41-76-4-165 29-245 25-61 77-111 136-151Z"/>
+  <path fill="url(#cornerFold)" fill-opacity=".82" d="M1200 280c-79 16-129 65-124 115 4 39 42 52 75 68 38 19 66 40 61 72-6 35-48 56-94 77 81-7 145-35 164-83 17-44-6-78-53-106-32-19-68-32-68-55 0-25 28-53 72-88-11-3-22-3-33 0Z"/>
+  <path fill="url(#cornerLowerFold)" fill-opacity=".84" d="M1600 642c-92-75-196-101-278-71-69 25-89 76-152 97-57 19-116 6-178 28 78 16 140 7 196-13 59-21 99-39 144-18 49 23 80 77 154 86 46 6 86-10 114-29v-80Z"/>
+  <path stroke="#D5E9A0" stroke-opacity=".55" stroke-width="7" d="M1284 143c-58 72-77 132-49 180 24 41 82 57 92 103 9 42-31 77-76 107"/>
+  <path stroke="#8EBE60" stroke-opacity=".58" stroke-width="8" d="M1191 286c-62 28-91 66-83 104 8 37 52 52 91 72 42 22 63 45 56 77-6 28-33 51-69 72"/>
+  <path stroke="#E7D47B" stroke-opacity=".5" stroke-width="6" d="M1117 812c93-38 176-44 246-20 57 20 90 57 143 66"/>
+
+</svg>
