@@ -120,17 +120,19 @@ class BackgroundCallService {
       } catch (_) {}
     }
 
-    // Also check active calls in FlutterCallkitIncoming
-    try {
-      final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      if (activeCalls.isNotEmpty) {
-        final extra = activeCalls.first.extra;
-        if (extra != null) {
-          return Map<String, dynamic>.from(extra);
+    // Also check active calls in FlutterCallkitIncoming on mobile
+    if (!kIsWeb && !_isDesktop) {
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls.isNotEmpty) {
+          final extra = activeCalls.first.extra;
+          if (extra != null) {
+            return Map<String, dynamic>.from(extra);
+          }
         }
+      } catch (e) {
+        debugPrint('[BackgroundCallService] checkAndConsumeAcceptedCall error: $e');
       }
-    } catch (e) {
-      debugPrint('[BackgroundCallService] checkAndConsumeAcceptedCall error: $e');
     }
 
     return null;

@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
@@ -300,9 +301,11 @@ class SignalingService extends ChangeNotifier {
   /// Clear the pending incoming call (after accept or dismiss).
   void clearIncomingCall() {
     _incomingCall = null;
-    try {
-      FlutterCallkitIncoming.endAllCalls();
-    } catch (_) {}
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      try {
+        FlutterCallkitIncoming.endAllCalls();
+      } catch (_) {}
+    }
     if (!_disposed) Future.microtask(notifyListeners);
   }
 

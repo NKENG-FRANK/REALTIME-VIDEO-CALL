@@ -51,6 +51,16 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Respond to request from another instance attempting to launch
+  static const UINT WM_CALLWAVE_SHOW_INSTANCE =
+      ::RegisterWindowMessageW(L"CallWave_Show_Single_Instance_Msg");
+  if (message == WM_CALLWAVE_SHOW_INSTANCE) {
+    ::ShowWindow(hwnd, SW_SHOW);
+    ::ShowWindow(hwnd, SW_RESTORE);
+    ::SetForegroundWindow(hwnd);
+    return 0;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
