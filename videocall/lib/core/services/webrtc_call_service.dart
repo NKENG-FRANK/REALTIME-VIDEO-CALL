@@ -1069,26 +1069,34 @@ class WebRTCCallService extends ChangeNotifier {
       _remoteStreams[peerId] = stream;
     }
 
-    if (consumer.kind == 'video') {
-      if (!remoteRenderers.containsKey(peerId)) {
-        final renderer = RTCVideoRenderer();
-        await renderer.initialize();
-        renderer.srcObject = stream;
-        remoteRenderers[peerId] = renderer;
-      } else {
-        remoteRenderers[peerId]!.srcObject = stream;
-      }
+    // Ensure audio tracks are enabled (they can arrive disabled from some SFU implementations).
+    for (final t in stream.getAudioTracks()) {
+      t.enabled = true;
+    }
 
-      if (_isVideoCall &&
-          (_remoteStreams.length == 1 || remoteRenderer.srcObject == null)) {
-        remoteRenderer.srcObject = stream;
-      }
+    // Always create/update a renderer for this peer stream.
+    // RTCVideoRenderer carries the audio pipeline even for audio-only consumers,
+    // which is the only way flutter_webrtc routes remote audio to the speaker.
+    if (!remoteRenderers.containsKey(peerId)) {
+      final renderer = RTCVideoRenderer();
+      await renderer.initialize();
+      renderer.srcObject = stream;
+      remoteRenderers[peerId] = renderer;
+    } else {
+      remoteRenderers[peerId]!.srcObject = stream;
+    }
+
+    // Bind the shared main renderer for both video AND audio calls.
+    // For audio calls: no video pixels are rendered but audio is still routed.
+    if (_remoteStreams.length == 1 || remoteRenderer.srcObject == null) {
+      remoteRenderer.srcObject = stream;
     }
 
     accept?.call();
     _callState = CallState.connected;
     _safeNotify();
   }
+
 
   void _handleSfuConsumerClosed(String consumerId) {
     debugPrint('[WebRTC-SFU] Consumer closed on server: $consumerId');
@@ -1170,7 +1178,12 @@ class WebRTCCallService extends ChangeNotifier {
       }
       _remoteStreams[peerId] = stream;
 
-      // Maintain dynamic per-peer video renderer
+      // Ensure all incoming audio tracks are enabled so they play on device.
+      for (final t in stream.getAudioTracks()) {
+        t.enabled = true;
+      }
+
+      // Maintain dynamic per-peer renderer (carries audio even for voice-only calls).
       if (!remoteRenderers.containsKey(peerId)) {
         final renderer = RTCVideoRenderer();
         await renderer.initialize();
@@ -1180,8 +1193,10 @@ class WebRTCCallService extends ChangeNotifier {
         remoteRenderers[peerId]!.srcObject = stream;
       }
 
-      // Bind the first arriving remote stream to the main renderer for 1-on-1 compatibility.
-      if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject == null)) {
+      // Bind the first arriving remote stream to the shared main renderer.
+      // For VIDEO calls this drives the video widget; for AUDIO calls it still
+      // routes audio through the platform audio pipeline (without showing video).
+      if (_remoteStreams.length == 1 || remoteRenderer.srcObject == null) {
         remoteRenderer.srcObject = stream;
       }
       _safeNotify();
@@ -1762,15 +1777,16 @@ class WebRTCCallService extends ChangeNotifier {
       );
       remoteRenderers[peerId] = freshPeerRenderer;
 
-      // 4. Recreate main renderer (for 1-on-1 mode)
-      if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
+      // 4. Recreate / rebind the main renderer for both video and audio calls.
+      //    Audio-only calls still need srcObject set so the platform audio pipeline
+      //    routes sound to the speaker — it works even without a visible video widget.
+      if (_remoteStreams.length == 1 || remoteRenderer.srcObject != null) {
         final freshMain = await _recreateRenderer(
           old: remoteRenderer,
           stream: stream,
-          reuse: remoteRenderer, // reuse the field reference but re-initialize it in-place
+          reuse: remoteRenderer,
         );
         if (!identical(freshMain, remoteRenderer)) {
-          // If a new instance was created (old was null or disposed), re-init the shared field
           remoteRenderer.srcObject = stream;
         }
       }
