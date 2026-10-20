@@ -152,40 +152,12 @@ class WebRTCCallService extends ChangeNotifier {
 
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
-      // Google STUN (always try first)
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
-      // Cloudflare STUN
       {'urls': 'stun:stun.cloudflare.com:3478'},
-      // Open Relay TURN – multiple ports for firewall traversal
-      {
-        'urls': [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:80?transport=tcp',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-          'turns:openrelay.metered.ca:443',
-        ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
-      // Metered.ca free TURN (alternative pool)
-      {
-        'urls': [
-          'turn:a.relay.metered.ca:80',
-          'turn:a.relay.metered.ca:80?transport=tcp',
-          'turn:a.relay.metered.ca:443',
-          'turn:a.relay.metered.ca:443?transport=tcp',
-          'turns:a.relay.metered.ca:443',
-        ],
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
     ],
     'sdpSemantics': 'unified-plan',
-    'iceCandidatePoolSize': 10,
-    'iceTransportPolicy': 'all', // try both STUN and TURN
   };
 
   late final Future<void> _initRenderersFuture = _initRenderers();
@@ -492,7 +464,12 @@ class WebRTCCallService extends ChangeNotifier {
 
       final pc = _peerConnections[peerId];
       if (pc != null) {
-        final remoteDesc = await pc.getRemoteDescription();
+        RTCSessionDescription? remoteDesc;
+        try {
+          remoteDesc = await pc.getRemoteDescription();
+        } catch (_) {
+          remoteDesc = null;
+        }
         if (remoteDesc != null) {
           try {
             await pc.addCandidate(candidate);
@@ -667,6 +644,10 @@ class WebRTCCallService extends ChangeNotifier {
       if (video) {
         localRenderer.srcObject = _localStream;
       }
+      try {
+        await Helper.setSpeakerphoneOn(true);
+        _isSpeakerOn = true;
+      } catch (_) {}
       debugPrint(
         '[WebRTC] ✅ Local media acquired: '
         'audio=${_localStream!.getAudioTracks().length} tracks, '
