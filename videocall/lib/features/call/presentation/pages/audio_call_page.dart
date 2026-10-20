@@ -160,8 +160,14 @@ class _AudioCallPageState extends State<AudioCallPage>
   }
 
   Widget _buildTopBar() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isCompact = screenWidth < 600;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 12 : 20,
+        vertical: isCompact ? 10 : 14,
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.85),
         border: const Border(bottom: BorderSide(color: Color(0xFFDCE7DF))),
@@ -197,6 +203,7 @@ class _AudioCallPageState extends State<AudioCallPage>
                       size: 11,
                       color: AppColors.onlineGreen,
                     ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: InkWell(
                         onTap: () => MeetingLinkService.showShareModal(
@@ -209,14 +216,16 @@ class _AudioCallPageState extends State<AudioCallPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              'Room: ${_formatRoomId(widget.roomId)} • Encrypted Audio',
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 12,
+                            Flexible(
+                              child: Text(
+                                'Room: ${_formatRoomId(widget.roomId)} • Encrypted Audio',
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(width: 4),
                             const Icon(Icons.link_rounded, size: 14, color: AppColors.primary),
@@ -244,7 +253,7 @@ class _AudioCallPageState extends State<AudioCallPage>
           const SizedBox(width: 4),
           SignalIndicator(
             strength: _callService.localNetworkQuality.bars,
-            showLabel: true,
+            showLabel: !isCompact,
             tooltip: _callService.localNetworkQuality.summaryText,
           ),
         ],
@@ -262,7 +271,7 @@ class _AudioCallPageState extends State<AudioCallPage>
   }
 
   Widget _buildParticipantSidebar() {
-    final remoteEntries = _callService.remoteRenderers.entries.toList();
+    final remotePeerIds = _callService.remotePeerIds;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -270,68 +279,71 @@ class _AudioCallPageState extends State<AudioCallPage>
         color: Colors.white.withOpacity(0.45),
         border: const Border(right: BorderSide(color: Color(0xFFDCE7DF))),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PARTICIPANTS (${1 + remoteEntries.length})',
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 14),
-          // Local (you)
-          ParticipantCard(
-            name: 'You (Local)',
-            initials: 'ME',
-            avatarColor: AppColors.primary,
-            signalStrength: _callService.localNetworkQuality.bars,
-            networkQuality: _callService.localNetworkQuality,
-            isSpeaking: _callService.isLocalSpeaking,
-            audioLevel: _callService.getAudioLevel('local'),
-          ),
-          // Live remote participants
-          ...remoteEntries.asMap().entries.map((mapEntry) {
-            final index = mapEntry.key;
-            final peerId = mapEntry.value.key;
-            final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
-            final name = widget.isGroupCall
-                ? 'Member ${index + 1} ($shortId)'
-                : widget.contactName;
-            final initials = widget.isGroupCall
-                ? 'M${index + 1}'
-                : _deriveInitials(widget.contactName);
-            final avatarColors = [
-              const Color(0xFF10A47D),
-              const Color(0xFF8752F4),
-              const Color(0xFFE85D04),
-              const Color(0xFF0077B6),
-              const Color(0xFFD62246),
-            ];
-            return Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: ParticipantCard(
-                name: name,
-                initials: initials,
-                avatarColor: avatarColors[index % avatarColors.length],
-                signalStrength: _callService.getNetworkQuality(peerId).bars,
-                networkQuality: _callService.getNetworkQuality(peerId),
-                isSpeaking: _callService.isSpeaking(peerId),
-                audioLevel: _callService.getAudioLevel(peerId),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'PARTICIPANTS (${1 + remotePeerIds.length})',
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
               ),
-            );
-          }),
-        ],
+            ),
+            const SizedBox(height: 14),
+            // Local (you)
+            ParticipantCard(
+              name: 'You (Local)',
+              initials: 'ME',
+              avatarColor: AppColors.primary,
+              signalStrength: _callService.localNetworkQuality.bars,
+              networkQuality: _callService.localNetworkQuality,
+              isSpeaking: _callService.isLocalSpeaking,
+              audioLevel: _callService.getAudioLevel('local'),
+            ),
+            // Live remote participants
+            ...remotePeerIds.asMap().entries.map((mapEntry) {
+              final index = mapEntry.key;
+              final peerId = mapEntry.value;
+              final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
+              final name = widget.isGroupCall
+                  ? 'Member ${index + 1} ($shortId)'
+                  : widget.contactName;
+              final initials = widget.isGroupCall
+                  ? 'M${index + 1}'
+                  : _deriveInitials(widget.contactName);
+              final avatarColors = [
+                const Color(0xFF10A47D),
+                const Color(0xFF8752F4),
+                const Color(0xFFE85D04),
+                const Color(0xFF0077B6),
+                const Color(0xFFD62246),
+              ];
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: ParticipantCard(
+                  name: name,
+                  initials: initials,
+                  avatarColor: avatarColors[index % avatarColors.length],
+                  signalStrength: _callService.getNetworkQuality(peerId).bars,
+                  networkQuality: _callService.getNetworkQuality(peerId),
+                  isSpeaking: _callService.isSpeaking(peerId),
+                  audioLevel: _callService.getAudioLevel(peerId),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildHeroAudioArea() {
+    final remotePeerIds = _callService.remotePeerIds;
     // Group mode: show a tile grid of all participants
-    if (widget.isGroupCall && _callService.remoteRenderers.isNotEmpty) {
+    if (widget.isGroupCall && remotePeerIds.isNotEmpty) {
       return _buildGroupAudioGrid();
     }
     // 1-on-1 mode: classic single hero avatar + ripple
@@ -339,12 +351,12 @@ class _AudioCallPageState extends State<AudioCallPage>
   }
 
   Widget _buildGroupAudioGrid() {
-    final remoteEntries = _callService.remoteRenderers.entries.toList();
+    final remotePeerIds = _callService.remotePeerIds;
     final allPeers = [
       ('local', 'You', 'ME', AppColors.primary),
-      ...remoteEntries.asMap().entries.map((e) {
+      ...remotePeerIds.asMap().entries.map((e) {
         final index = e.key;
-        final peerId = e.value.key;
+        final peerId = e.value;
         final shortId = peerId.length > 6 ? peerId.substring(0, 6) : peerId;
         final avatarColors = [
           const Color(0xFF10A47D),
@@ -530,7 +542,7 @@ class _AudioCallPageState extends State<AudioCallPage>
 
   Widget _buildSingleHeroAudioArea() {
     final initials = _deriveInitials(widget.contactName);
-    final remotePeerId = _callService.remoteRenderers.keys.firstOrNull ?? '';
+    final remotePeerId = _callService.remotePeerIds.firstOrNull ?? '';
     final remoteQuality = _callService.getNetworkQuality(remotePeerId);
     final isPeerSpeaking = _callService.activeSpeakerId != null &&
         _callService.activeSpeakerId != 'local';
@@ -792,16 +804,20 @@ class _AudioCallPageState extends State<AudioCallPage>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    remoteQuality.isPoor
-                        ? 'Poor Network • Latency ${remoteQuality.rttMs.toStringAsFixed(0)}ms'
-                        : 'Connected • HD Voice (Opus 48kHz)',
-                    style: TextStyle(
-                      color: remoteQuality.isPoor
-                          ? const Color(0xFFDC2626)
-                          : AppColors.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      remoteQuality.isPoor
+                          ? 'Poor Network • Latency ${remoteQuality.rttMs.toStringAsFixed(0)}ms'
+                          : 'Connected • HD Voice (Opus 48kHz)',
+                      style: TextStyle(
+                        color: remoteQuality.isPoor
+                            ? const Color(0xFFDC2626)
+                            : AppColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -889,10 +905,11 @@ class _AudioRipplePainter extends CustomPainter {
       final ringProgress = (progress + (i * 0.33)) % 1.0;
       final radius = baseRadius + (maxRadius - baseRadius) * ringProgress;
       final boost = audioLevel > 0.04 ? 0.35 : 0.22;
-      final opacity = (1.0 - ringProgress) * boost;
+      final rawOpacity = (1.0 - ringProgress) * boost;
+      final opacity = rawOpacity.isNaN ? 0.0 : rawOpacity.clamp(0.0, 1.0);
 
       final paint = Paint()
-        ..color = color.withOpacity(opacity.clamp(0.0, 1.0))
+        ..color = color.withOpacity(opacity)
         ..style = PaintingStyle.stroke
         ..strokeWidth = audioLevel > 0.04 ? 2.5 : 2.0;
 

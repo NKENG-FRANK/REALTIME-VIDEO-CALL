@@ -257,14 +257,17 @@ class _GlobalIncomingCallListenerState
       _checkPendingCalls();
     });
 
-    _callKitSubscription = FlutterCallkitIncoming.onEvent.listen((event) {
-      if (event is CallEventActionCallAccept && mounted) {
-        final extra = event.callKitParams.extra;
-        if (extra != null) {
-          _navigateToCallRoom(extra);
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    if (isMobile) {
+      _callKitSubscription = FlutterCallkitIncoming.onEvent.listen((event) {
+        if (event is CallEventActionCallAccept && mounted) {
+          final extra = event.callKitParams.extra;
+          if (extra != null) {
+            _navigateToCallRoom(extra);
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   @override
@@ -282,6 +285,9 @@ class _GlobalIncomingCallListenerState
   }
 
   Future<void> _checkPendingCalls() async {
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    if (!isMobile) return;
+
     // 1. Check if user accepted the call via notification action
     if (_pendingNotificationAcceptedCall != null && mounted) {
       final call = _pendingNotificationAcceptedCall!;

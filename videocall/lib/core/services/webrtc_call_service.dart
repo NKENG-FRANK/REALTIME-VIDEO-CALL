@@ -131,7 +131,14 @@ class WebRTCCallService extends ChangeNotifier {
 
   bool isPeerReconnecting(String peerId) => _reconnectingPeers.contains(peerId);
   bool get isAnyReconnecting => _reconnectingPeers.isNotEmpty;
-  Set<String> get reconnectingPeers => Set.unmodifiable(_reconnectingPeers);
+  List<String> get remotePeerIds {
+    final ids = <String>{};
+    ids.addAll(_remoteStreams.keys);
+    ids.addAll(_peerConsumers.keys);
+    ids.addAll(_peerConnections.keys);
+    ids.addAll(remoteRenderers.keys);
+    return ids.toList();
+  }
 
   String get formattedDuration {
     if (_callStartTime == null) return '00:05';

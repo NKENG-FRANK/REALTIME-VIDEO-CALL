@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 
 class ApiConfig {
-  // Network host of the machine running the backend services
-  static const String _configuredHost = String.fromEnvironment('SERVER_IP', defaultValue: '');
+  // Network host of the machine running the backend services (VPS default)
+  static const String _configuredHost = String.fromEnvironment('SERVER_IP', defaultValue: '144.91.89.100');
   static const bool isSecure = bool.fromEnvironment('IS_SECURE', defaultValue: false);
 
-  // LAN IP of the current development machine
-  static const String defaultLanIp = '192.168.50.72';
+  // Fallback LAN IP of the current development machine
+  static const String defaultLanIp = '144.91.89.100';
 
   static String get host {
     if (_configuredHost.isNotEmpty) {
