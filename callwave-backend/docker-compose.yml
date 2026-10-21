@@ -176,6 +176,26 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+  coturn:
+    image: coturn/coturn:latest
+    container_name: callwave-coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49152-49252:49152-49252/udp"
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=144.91.89.100
+      - --user=callwave:callwave_secret
+      - --external-ip=144.91.89.100
+      - --min-port=49152
+      - --max-port=49252
+      - --no-cli
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Volumes
