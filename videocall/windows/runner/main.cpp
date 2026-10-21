@@ -11,7 +11,10 @@ static const UINT WM_CALLWAVE_SHOW_INSTANCE =
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
-  // Enforce single instance: only one instance of CallWave can run at a time
+  // Enforce single instance only in Release builds.
+  // In Debug mode (flutter run / IDE), we skip the mutex so the Flutter VM
+  // service port can always attach without colliding with a tray instance.
+#ifndef _DEBUG
   HANDLE hMutex = ::CreateMutexW(nullptr, TRUE, L"CallWave_Single_Instance_Mutex_998811");
   if (::GetLastError() == ERROR_ALREADY_EXISTS) {
     // Notify the existing instance to show and bring itself to the foreground
@@ -30,6 +33,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
     return EXIT_SUCCESS; // Terminate duplicate instance immediately
   }
+#else
+  HANDLE hMutex = nullptr; // No mutex in debug builds
+#endif
 
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
