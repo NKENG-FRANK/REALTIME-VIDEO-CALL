@@ -129,7 +129,7 @@ export default function App() {
 
             {/* Platform Badges */}
             <div className="hero-cta-buttons">
-              <a href="https://drive.google.com/uc?export=download&id=1jUA9oajBW75DMiAul-a2C_3QQ1tH5_f0" target="_blank" rel="noreferrer" className="platform-store-badge android-badge">
+              <a href="https://drive.google.com/file/d/1VGRbocCA6Hb8QljSfWdhz0nTlXws6C8G/view?usp=sharing" target="_blank" rel="noreferrer" className="platform-store-badge android-badge">
                 <div className="badge-icon">
                   <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993 0 .5511-.4483.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 0 0-.1521-.5676.416.416 0 0 0-.5676.1521l-2.0223 3.503C15.5902 8.4116 13.8533 8.082 12 8.082c-1.8533 0-3.5902.3296-5.1368.8677L4.8409 5.4467a.4161.4161 0 0 0-.5677-.1521.4157.4157 0 0 0-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3432-4.1021-2.6889-7.5743-6.1185-9.4396" />
@@ -141,7 +141,7 @@ export default function App() {
                 </div>
               </a>
 
-              <a href="https://drive.google.com/uc?export=download&id=1ehSCso7-sgZT5S1-lKa3llt0CvYCmbGF" target="_blank" rel="noreferrer" className="platform-store-badge windows-badge">
+              <a href="https://drive.google.com/file/d/1buswnmk28rS1fTraFx9cwcap46k2PkuL/view?usp=sharing" target="_blank" rel="noreferrer" className="platform-store-badge windows-badge">
                 <div className="badge-icon">
                   <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.852" />
@@ -370,7 +370,7 @@ export default function App() {
 
                 <div className="card-action-bar">
                   <a
-                    href="https://drive.google.com/uc?export=download&id=1jUA9oajBW75DMiAul-a2C_3QQ1tH5_f0"
+                    href="https://drive.google.com/file/d/1VGRbocCA6Hb8QljSfWdhz0nTlXws6C8G/view?usp=sharing"
                     target="_blank" rel="noreferrer"
                     className="btn-download-main btn-green"
                   >
@@ -430,7 +430,7 @@ export default function App() {
 
                 <div className="card-action-bar">
                   <a
-                    href="https://drive.google.com/uc?export=download&id=1ehSCso7-sgZT5S1-lKa3llt0CvYCmbGF"
+                    href="https://drive.google.com/file/d/1buswnmk28rS1fTraFx9cwcap46k2PkuL/view?usp=sharing"
                     target="_blank" rel="noreferrer"
                     className="btn-download-main btn-amber"
                   >
@@ -657,8 +657,8 @@ export default function App() {
           <div className="footer-links-group">
             <div className="footer-col">
               <h5>Platforms</h5>
-              <a href="https://drive.google.com/uc?export=download&id=1jUA9oajBW75DMiAul-a2C_3QQ1tH5_f0" target="_blank" rel="noreferrer">Android APK (v1.0)</a>
-              <a href="https://drive.google.com/uc?export=download&id=1ehSCso7-sgZT5S1-lKa3llt0CvYCmbGF" target="_blank" rel="noreferrer">Windows Desktop (x64)</a>
+              <a href="https://drive.google.com/file/d/1VGRbocCA6Hb8QljSfWdhz0nTlXws6C8G/view?usp=sharing" target="_blank" rel="noreferrer">Android APK (v1.0)</a>
+              <a href="https://drive.google.com/file/d/1buswnmk28rS1fTraFx9cwcap46k2PkuL/view?usp=sharing" target="_blank" rel="noreferrer">Windows Desktop (x64)</a>
               <a href="#downloads">Web Client</a>
             </div>
 
@@ -741,11 +741,11 @@ export default function App() {
 
                 <div className="modal-footer">
                   <a
-                    href="https://drive.google.com/uc?export=download&id=1jUA9oajBW75DMiAul-a2C_3QQ1tH5_f0"
+                    href="https://drive.google.com/file/d/1VGRbocCA6Hb8QljSfWdhz0nTlXws6C8G/view?usp=sharing"
                     target="_blank" rel="noreferrer"
                     className="btn-download-main btn-green"
                   >
-                    Download APK Now (58 MB)
+                    Download APK Now (95 MB)
                   </a>
                 </div>
               </>
@@ -790,7 +790,7 @@ export default function App() {
 
                 <div className="modal-footer">
                   <a
-                    href="https://drive.google.com/uc?export=download&id=1ehSCso7-sgZT5S1-lKa3llt0CvYCmbGF"
+                    href="https://drive.google.com/file/d/1buswnmk28rS1fTraFx9cwcap46k2PkuL/view?usp=sharing"
                     target="_blank" rel="noreferrer"
                     className="btn-download-main btn-amber"
                   >
