@@ -50,6 +50,9 @@ class WebRTCCallService extends ChangeNotifier {
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
   final Map<String, MediaStream> _remoteStreams = {};
   final Map<String, bool> _makingOffer = {};
+  final Map<String, Timer> _offerWatchdogTimers = {};
+  final Map<String, String> _lastProcessedOfferSdp = {};
+  final Map<String, String> _lastProcessedAnswerSdp = {};
 
   // ── Mediasoup SFU State ──────────────────────────────────────────────────
   bool _isSfuMode = false;
@@ -296,18 +299,20 @@ class WebRTCCallService extends ChangeNotifier {
       // Default to robust P2P mesh for reliable media streaming
       _isSfuMode = false;
       if (existingParticipants != null && existingParticipants.isNotEmpty) {
-        // We are a late joiner – existing participant(s) will send us offers.
+        // We are a late joiner (callee) – the caller who is already waiting will send the offer.
         _isFirstPeer = false;
         _callState = CallState.connected;
         _callStartTime = DateTime.now();
 
-        // Safeguard watchdog: if an existing peer doesn't send an offer within 800ms, initiate offer to them
+        // Safeguard watchdog: Give the caller 6000ms to send their offer (needed for mobile/cellular devices).
+        // Only initiate a fallback offer if after 6s no peer connection / offer was processed.
         for (final p in existingParticipants) {
           final pId = (p is Map) ? _peerIdFromData(Map<String, dynamic>.from(p)) : p.toString();
           if (pId.isNotEmpty && pId != _currentUserId) {
-            Future.delayed(const Duration(milliseconds: 800), () {
+            _offerWatchdogTimers[pId]?.cancel();
+            _offerWatchdogTimers[pId] = Timer(const Duration(milliseconds: 6000), () {
               if (!_peerConnections.containsKey(pId) && _callState != CallState.ended) {
-                debugPrint('[WebRTC] Offer watchdog (800ms): Initiating offer to existing peer $pId');
+                debugPrint('[WebRTC] Offer watchdog (6000ms): Initiating fallback offer to existing peer $pId');
                 _createOffer(pId);
               }
             });
@@ -425,10 +430,17 @@ class WebRTCCallService extends ChangeNotifier {
       }
       debugPrint('[WebRTC] Received WebRTC answer');
       final sdpMap = map['sdp'] as Map<String, dynamic>;
+      final incomingSdp = sdpMap['sdp'] as String? ?? '';
       final peerId = _peerIdFromData(
         map,
         fallback: _peerConnections.keys.firstOrNull ?? 'peer_0',
       );
+
+      if (incomingSdp.isNotEmpty && _lastProcessedAnswerSdp[peerId] == incomingSdp) {
+        debugPrint('[WebRTC] Duplicate answer received for $peerId — ignoring');
+        return;
+      }
+      _lastProcessedAnswerSdp[peerId] = incomingSdp;
 
       final pc = _peerConnections[peerId];
       if (pc == null) {
@@ -436,8 +448,10 @@ class WebRTCCallService extends ChangeNotifier {
         final fallbackPc = _peerConnections.values.firstOrNull;
         if (fallbackPc != null) {
           final description =
-              RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
-          await fallbackPc.setRemoteDescription(description);
+              RTCSessionDescription(incomingSdp, sdpMap['type']);
+          if (fallbackPc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+            await fallbackPc.setRemoteDescription(description);
+          }
           final fallbackKey = _peerConnections.keys.first;
           await _drainPendingCandidates(fallbackKey);
           await _rebindAndRestoreVideo(fallbackKey);
@@ -445,12 +459,16 @@ class WebRTCCallService extends ChangeNotifier {
         }
         return;
       }
-      final description =
-          RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
-      await pc.setRemoteDescription(description);
-      await _drainPendingCandidates(peerId);
-      await _rebindAndRestoreVideo(peerId);
-      _updateAdaptiveBitrates();
+      if (pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+        final description =
+            RTCSessionDescription(incomingSdp, sdpMap['type']);
+        await pc.setRemoteDescription(description);
+        await _drainPendingCandidates(peerId);
+        await _rebindAndRestoreVideo(peerId);
+        _updateAdaptiveBitrates();
+      } else {
+        debugPrint('[WebRTC] Answer arrived for $peerId but signaling state is ${pc.signalingState} — skipping setRemoteDescription');
+      }
     });
 
     // ── webrtc:candidate ──────────────────────────────────────────────────
@@ -722,6 +740,30 @@ class WebRTCCallService extends ChangeNotifier {
           _mediaError = 'Microphone unavailable: $fallbackErr';
           _safeNotify();
         }
+      }
+    }
+
+    if (_localStream != null) {
+      await _attachLocalTracksToPeerConnections();
+    }
+  }
+
+  /// Ensure all local tracks are attached to all active peer connections.
+  Future<void> _attachLocalTracksToPeerConnections() async {
+    if (_localStream == null) return;
+    for (final entry in _peerConnections.entries) {
+      final pc = entry.value;
+      try {
+        final senders = await pc.getSenders();
+        for (final track in _localStream!.getTracks()) {
+          final alreadyAdded = senders.any((s) => s.track?.id == track.id);
+          if (!alreadyAdded) {
+            debugPrint('[WebRTC] Late-binding ${track.kind} track to peer ${entry.key}');
+            await pc.addTrack(track, _localStream!);
+          }
+        }
+      } catch (e) {
+        debugPrint('[WebRTC] Error late-binding track to peer ${entry.key}: $e');
       }
     }
   }
@@ -1187,7 +1229,16 @@ class WebRTCCallService extends ChangeNotifier {
       return _peerConnections[peerId]!;
     }
 
-    debugPrint('[WebRTC] Creating peer connection for peer $peerId');
+    // Wait up to 3000ms for local media to finish acquiring so local tracks are attached
+    if (_localStream == null) {
+      int waitMs = 0;
+      while (_localStream == null && waitMs < 3000) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waitMs += 100;
+      }
+    }
+
+    debugPrint('[WebRTC] Creating peer connection for peer $peerId (localStream: ${_localStream != null})');
     final pc = await createPeerConnection(_iceServers);
     _peerConnections[peerId] = pc;
 
@@ -1917,6 +1968,8 @@ class WebRTCCallService extends ChangeNotifier {
 
   Future<void> _createOffer(String peerId, {bool isIceRestart = false}) async {
     try {
+      _offerWatchdogTimers[peerId]?.cancel();
+      _offerWatchdogTimers.remove(peerId);
       _makingOffer[peerId] = true;
       final pc = await _createPeerConnectionForPeer(peerId);
 
@@ -1966,27 +2019,35 @@ class WebRTCCallService extends ChangeNotifier {
     bool isIceRestart = false,
   }) async {
     try {
+      _offerWatchdogTimers[peerId]?.cancel();
+      _offerWatchdogTimers.remove(peerId);
+
+      final incomingSdp = sdpMap['sdp'] as String? ?? '';
+      if (incomingSdp.isNotEmpty && _lastProcessedOfferSdp[peerId] == incomingSdp) {
+        debugPrint('[WebRTC] Duplicate offer received from $peerId — ignoring');
+        return;
+      }
+      _lastProcessedOfferSdp[peerId] = incomingSdp;
+
       final pc = await _createPeerConnectionForPeer(peerId);
 
-      // Deterministic role assignment:
-      // Larger ID is polite (accepts offer), smaller ID is impolite (initiator priority).
-      final isPolite =
-          _currentUserId != null && _currentUserId!.compareTo(peerId) > 0;
-      // A freshly-created peer connection reports signalingState as null,
-      // which is functionally equivalent to "stable". Treat both as non-colliding.
-      final signalingStable = pc.signalingState == null ||
-          pc.signalingState == RTCSignalingState.RTCSignalingStateStable;
-      final offerCollision = (_makingOffer[peerId] == true) || !signalingStable;
+      // Check for offer collision (glare)
+      final hasLocalOffer = pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer;
+      final offerCollision = (_makingOffer[peerId] == true) || hasLocalOffer;
 
-      if (offerCollision && !isPolite) {
+      if (offerCollision) {
         debugPrint(
-          '[WebRTC] Glare collision detected: Impolite peer ignoring offer from $peerId',
+          '[WebRTC] Glare collision detected for $peerId: rolling back local offer to accept remote offer',
         );
-        return;
+        try {
+          await pc.setLocalDescription(RTCSessionDescription('', 'rollback'));
+        } catch (e) {
+          debugPrint('[WebRTC] Rollback note: $e');
+        }
       }
 
       final description =
-          RTCSessionDescription(sdpMap['sdp'], sdpMap['type']);
+          RTCSessionDescription(incomingSdp, sdpMap['type']);
       await pc.setRemoteDescription(description);
 
       final answer = await pc.createAnswer({
@@ -2174,6 +2235,13 @@ class WebRTCCallService extends ChangeNotifier {
     _iceDisconnectTimers.clear();
     _iceRestartAttempts.clear();
     _reconnectingPeers.clear();
+
+    for (final timer in _offerWatchdogTimers.values) {
+      timer.cancel();
+    }
+    _offerWatchdogTimers.clear();
+    _lastProcessedOfferSdp.clear();
+    _lastProcessedAnswerSdp.clear();
 
     if (_currentRoomId != null) {
       _socket?.emit('call:end', {
