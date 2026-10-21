@@ -425,7 +425,8 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     if (data.isIceRestart) payload.isIceRestart = true;
     if (data.to) {
       io.to(data.to).emit('webrtc:offer', payload);
-    } else {
+    }
+    if (data.roomId) {
       socket.to(data.roomId).emit('webrtc:offer', payload);
     }
   });
@@ -438,7 +439,8 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     };
     if (data.to) {
       io.to(data.to).emit('webrtc:answer', payload);
-    } else {
+    }
+    if (data.roomId) {
       socket.to(data.roomId).emit('webrtc:answer', payload);
     }
   });
@@ -451,7 +453,8 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     };
     if (data.to) {
       io.to(data.to).emit('webrtc:candidate', payload);
-    } else {
+    }
+    if (data.roomId) {
       socket.to(data.roomId).emit('webrtc:candidate', payload);
     }
   });
@@ -463,7 +466,8 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     };
     if (data.to) {
       io.to(data.to).emit('webrtc:request_keyframe', payload);
-    } else {
+    }
+    if (data.roomId) {
       socket.to(data.roomId).emit('webrtc:request_keyframe', payload);
     }
   });
