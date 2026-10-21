@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart' as sfu;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../config/api_config.dart';
@@ -616,6 +617,23 @@ class WebRTCCallService extends ChangeNotifier {
   // ── Media ─────────────────────────────────────────────────────────────────
 
   Future<void> startLocalMedia({bool video = true, bool audio = true}) async {
+    // 1. Explicitly request camera & microphone runtime permissions on Android / iOS
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+         defaultTargetPlatform == TargetPlatform.iOS)) {
+      try {
+        final List<Permission> permsToRequest = [];
+        if (audio) permsToRequest.add(Permission.microphone);
+        if (video) permsToRequest.add(Permission.camera);
+        if (permsToRequest.isNotEmpty) {
+          final statuses = await permsToRequest.request();
+          debugPrint('[WebRTC] Runtime permissions status: $statuses');
+        }
+      } catch (permErr) {
+        debugPrint('[WebRTC] Note: runtime permission request error: $permErr');
+      }
+    }
+
     final Map<String, dynamic> mediaConstraints = {
       'audio': {
         'echoCancellation': true,
@@ -631,13 +649,6 @@ class WebRTCCallService extends ChangeNotifier {
                   'facingMode': 'user',
                 }
               : {
-                  'mandatory': {
-                    'minWidth': '480',
-                    'minHeight': '360',
-                    'maxWidth': '640',
-                    'maxHeight': '480',
-                    'maxFrameRate': '24',
-                  },
                   'facingMode': 'user',
                   'optional': [],
                 })
@@ -652,6 +663,12 @@ class WebRTCCallService extends ChangeNotifier {
       if (video) {
         localRenderer.srcObject = _localStream;
       }
+      try {
+        await Helper.setSpeakerphoneOn(true);
+        _isSpeakerOn = true;
+      } catch (e) {
+        debugPrint('[WebRTC] Note: setSpeakerphoneOn error: $e');
+      }
       debugPrint(
         '[WebRTC] ✅ Local media acquired: '
         'audio=${_localStream!.getAudioTracks().length} tracks, '
@@ -659,30 +676,50 @@ class WebRTCCallService extends ChangeNotifier {
       );
       _safeNotify();
     } catch (e) {
-      debugPrint('[WebRTC] ❌ Error getting user media: $e');
-      _mediaFailed = true;
-      _mediaError = e.toString();
-      _safeNotify();
-      // Try audio-only fallback if video+audio failed
-      if (video) {
-        debugPrint('[WebRTC] Attempting audio-only fallback...');
+      debugPrint('[WebRTC] ❌ Primary getUserMedia failed: $e, attempting simple fallback...');
+      try {
+        _localStream = await navigator.mediaDevices.getUserMedia({
+          'audio': true,
+          'video': video ? {'facingMode': 'user'} : false,
+        });
+        _mediaFailed = false;
+        _mediaError = '';
+        if (video) {
+          localRenderer.srcObject = _localStream;
+        }
         try {
-          _localStream = await navigator.mediaDevices.getUserMedia({
-            'audio': {
-              'echoCancellation': true,
-              'noiseSuppression': true,
-              'autoGainControl': true,
-            },
-            'video': false,
-          });
-          _mediaFailed = false;
-          _mediaError = '';
-          debugPrint('[WebRTC] ✅ Audio-only fallback succeeded');
-          _safeNotify();
-        } catch (audioError) {
-          debugPrint('[WebRTC] ❌ Audio-only fallback also failed: $audioError');
+          await Helper.setSpeakerphoneOn(true);
+          _isSpeakerOn = true;
+        } catch (_) {}
+        debugPrint('[WebRTC] ✅ Fallback getUserMedia succeeded');
+        _safeNotify();
+      } catch (fallbackErr) {
+        debugPrint('[WebRTC] ❌ Fallback getUserMedia failed: $fallbackErr');
+        // If video was requested, try audio-only fallback
+        if (video) {
+          debugPrint('[WebRTC] Attempting audio-only fallback...');
+          try {
+            _localStream = await navigator.mediaDevices.getUserMedia({
+              'audio': true,
+              'video': false,
+            });
+            _mediaFailed = false;
+            _mediaError = '';
+            try {
+              await Helper.setSpeakerphoneOn(true);
+              _isSpeakerOn = true;
+            } catch (_) {}
+            debugPrint('[WebRTC] ✅ Audio-only fallback succeeded');
+            _safeNotify();
+          } catch (audioError) {
+            debugPrint('[WebRTC] ❌ Audio-only fallback also failed: $audioError');
+            _mediaFailed = true;
+            _mediaError = 'Camera and microphone unavailable: $audioError';
+            _safeNotify();
+          }
+        } else {
           _mediaFailed = true;
-          _mediaError = 'Camera and microphone unavailable: $audioError';
+          _mediaError = 'Microphone unavailable: $fallbackErr';
           _safeNotify();
         }
       }
@@ -1073,20 +1110,22 @@ class WebRTCCallService extends ChangeNotifier {
       _remoteStreams[peerId] = stream;
     }
 
-    if (consumer.kind == 'video') {
-      if (!remoteRenderers.containsKey(peerId)) {
-        final renderer = RTCVideoRenderer();
-        await renderer.initialize();
-        renderer.srcObject = stream;
-        remoteRenderers[peerId] = renderer;
-      } else {
-        remoteRenderers[peerId]!.srcObject = stream;
-      }
+    // Ensure all incoming audio tracks are active
+    for (final t in stream.getAudioTracks()) {
+      t.enabled = true;
+    }
 
-      if (_isVideoCall &&
-          (_remoteStreams.length == 1 || remoteRenderer.srcObject == null)) {
-        remoteRenderer.srcObject = stream;
-      }
+    if (!remoteRenderers.containsKey(peerId)) {
+      final renderer = RTCVideoRenderer();
+      await renderer.initialize();
+      renderer.srcObject = stream;
+      remoteRenderers[peerId] = renderer;
+    } else {
+      remoteRenderers[peerId]!.srcObject = stream;
+    }
+
+    if (_remoteStreams.length == 1 || remoteRenderer.srcObject == null) {
+      remoteRenderer.srcObject = stream;
     }
 
     accept?.call();
@@ -1174,6 +1213,11 @@ class WebRTCCallService extends ChangeNotifier {
       }
       _remoteStreams[peerId] = stream;
 
+      // Ensure all incoming audio tracks are enabled so they play on device
+      for (final t in stream.getAudioTracks()) {
+        t.enabled = true;
+      }
+
       // Maintain dynamic per-peer video renderer
       if (!remoteRenderers.containsKey(peerId)) {
         final renderer = RTCVideoRenderer();
@@ -1185,7 +1229,8 @@ class WebRTCCallService extends ChangeNotifier {
       }
 
       // Bind the first arriving remote stream to the main renderer for 1-on-1 compatibility.
-      if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject == null)) {
+      // Set for both audio and video calls so the underlying audio pipeline remains connected.
+      if (_remoteStreams.length == 1 || remoteRenderer.srcObject == null) {
         remoteRenderer.srcObject = stream;
       }
       _safeNotify();
@@ -1755,6 +1800,9 @@ class WebRTCCallService extends ChangeNotifier {
       for (final track in stream.getVideoTracks()) {
         track.enabled = true;
       }
+      for (final track in stream.getAudioTracks()) {
+        track.enabled = true;
+      }
 
       // 3. Recreate per-peer renderer — the only reliable fix for a frozen native texture.
       //    Setting srcObject=null then srcObject=stream is NOT enough when the stream object
@@ -1766,8 +1814,8 @@ class WebRTCCallService extends ChangeNotifier {
       );
       remoteRenderers[peerId] = freshPeerRenderer;
 
-      // 4. Recreate main renderer (for 1-on-1 mode)
-      if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
+      // 4. Recreate main renderer (for 1-on-1 mode, both audio and video)
+      if (_remoteStreams.length == 1 || remoteRenderer.srcObject != null) {
         final freshMain = await _recreateRenderer(
           old: remoteRenderer,
           stream: stream,
