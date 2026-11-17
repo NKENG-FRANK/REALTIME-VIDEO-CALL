@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../core/l10n/app_localizations.dart';
 
 class WelcomePanel extends StatelessWidget {
@@ -6,10 +7,10 @@ class WelcomePanel extends StatelessWidget {
   final bool isSignUp;
 
   const WelcomePanel({
-    Key? key,
+    super.key,
     required this.onSignInTap,
     required this.isSignUp,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -22,11 +23,7 @@ class WelcomePanel extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0D381E),
-                Color(0xFF134E2B),
-                Color(0xFF1B6E3D),
-              ],
+              colors: [Color(0xFF0D381E), Color(0xFF134E2B), Color(0xFF1B6E3D)],
             ),
           ),
           child: Stack(
@@ -59,7 +56,10 @@ class WelcomePanel extends StatelessWidget {
 
               // Main Content
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 40),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 36,
+                  vertical: 40,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -180,7 +180,10 @@ class WelcomePanel extends StatelessWidget {
 
                     // Institutional Footer Tag
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
@@ -234,11 +237,7 @@ class WelcomePanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
           ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: const Color(0xFF4ADE80),
-          ),
+          child: Icon(icon, size: 18, color: const Color(0xFF4ADE80)),
         ),
         const SizedBox(width: 12),
         Expanded(

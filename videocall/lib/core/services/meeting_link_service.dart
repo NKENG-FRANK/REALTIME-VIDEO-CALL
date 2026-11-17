@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../../config/api_config.dart';
 import '../../config/theme/app_colors.dart';
 
@@ -35,6 +36,15 @@ class MeetingLinkService {
     if (!kIsWeb) return null;
     try {
       final fullUrl = Uri.base.toString();
+      final uri = Uri.base;
+      final fragment = uri.fragment;
+      final fragmentQuery = fragment.contains('?')
+          ? Uri(query: fragment.split('?').last).queryParameters
+          : const <String, String>{};
+      if (!uri.queryParameters.containsKey('room') &&
+          !fragmentQuery.containsKey('room')) {
+        return null;
+      }
       final parsed = parseInput(fullUrl);
       if (parsed.roomId.isNotEmpty) {
         return parsed;
@@ -45,7 +55,8 @@ class MeetingLinkService {
 
   static String get baseUrl {
     if (kIsWeb) {
-      final portPart = (Uri.base.hasPort && Uri.base.port != 80 && Uri.base.port != 443)
+      final portPart =
+          (Uri.base.hasPort && Uri.base.port != 80 && Uri.base.port != 443)
           ? ':${Uri.base.port}'
           : '';
       return '${Uri.base.scheme}://${Uri.base.host}$portPart/#/join';
@@ -77,7 +88,11 @@ class MeetingLinkService {
     String? title,
     String? hostName,
   }) {
-    final link = generateMeetingLink(roomId: roomId, isVideo: isVideo, title: title);
+    final link = generateMeetingLink(
+      roomId: roomId,
+      isVideo: isVideo,
+      title: title,
+    );
     final buffer = StringBuffer();
     if (hostName != null && hostName.isNotEmpty) {
       buffer.writeln('$hostName is inviting you to a Callwave meeting.');
@@ -146,7 +161,11 @@ class MeetingLinkService {
     bool isVideo = true,
     String? title,
   }) async {
-    final link = generateMeetingLink(roomId: roomId, isVideo: isVideo, title: title);
+    final link = generateMeetingLink(
+      roomId: roomId,
+      isVideo: isVideo,
+      title: title,
+    );
     await Clipboard.setData(ClipboardData(text: link));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,7 +180,9 @@ class MeetingLinkService {
           backgroundColor: AppColors.primary,
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -195,7 +216,9 @@ class MeetingLinkService {
           backgroundColor: AppColors.primary,
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -287,7 +310,9 @@ class _ShareMeetingModal extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title != null && title!.isNotEmpty ? title! : 'Share Meeting Link',
+                      title != null && title!.isNotEmpty
+                          ? title!
+                          : 'Share Meeting Link',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -350,7 +375,10 @@ class _ShareMeetingModal extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.copy_rounded, color: AppColors.primary),
+                  icon: const Icon(
+                    Icons.copy_rounded,
+                    color: AppColors.primary,
+                  ),
                   tooltip: 'Copy Link',
                   onPressed: () {
                     MeetingLinkService.copyLinkToClipboard(

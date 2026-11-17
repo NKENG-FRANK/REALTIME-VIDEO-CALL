@@ -1,7 +1,11 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../../../config/theme/app_theme.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/signaling_service.dart';
 import '../../../../core/services/webrtc_call_service.dart';
@@ -29,7 +33,7 @@ class ConnectingPage extends StatefulWidget {
   final VoidCallback? onCancel;
 
   const ConnectingPage({
-    Key? key,
+    super.key,
     this.callTitle = 'Call',
     this.roomId = '',
     this.userToken,
@@ -42,7 +46,7 @@ class ConnectingPage extends StatefulWidget {
     this.recipientUserIds = const [],
     this.recipientNames = const [],
     this.onCancel,
-  }) : super(key: key);
+  });
 
   @override
   State<ConnectingPage> createState() => _ConnectingPageState();
@@ -103,10 +107,11 @@ class _ConnectingPageState extends State<ConnectingPage>
       final user = authCtrl.currentUser;
       final myName = user != null
           ? (user['display_name'] ??
-              user['displayName'] ??
-              ((user['first_name'] != null || user['last_name'] != null)
-                  ? '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'.trim()
-                  : user['username'] ?? user['matricule'] ?? 'User'))
+                user['displayName'] ??
+                ((user['first_name'] != null || user['last_name'] != null)
+                    ? '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'
+                          .trim()
+                    : user['username'] ?? user['matricule'] ?? 'User'))
           : 'User';
       final myMatricule = user?['matricule']?.toString() ?? '';
 
@@ -173,7 +178,9 @@ class _ConnectingPageState extends State<ConnectingPage>
           builder: (_) => AudioCallPage(
             callTitle: widget.callTitle,
             roomId: widget.roomId,
-            contactName: widget.isGroupCall ? widget.callTitle : widget.recipientName,
+            contactName: widget.isGroupCall
+                ? widget.callTitle
+                : widget.recipientName,
             contactMatricule: widget.isGroupCall
                 ? '${widget.participantCount} members'
                 : widget.recipientMatricule,
@@ -203,6 +210,59 @@ class _ConnectingPageState extends State<ConnectingPage>
     }
   }
 
+  String _localizedStatusTitle(AppLocalizations l10n) => switch (_statusTitle) {
+    'Connecting...' => l10n.connecting,
+    'Starting Group Call...' => l10n.text(
+      fr: 'Démarrage de l’appel de groupe…',
+      en: 'Starting group call…',
+    ),
+    'User Offline' => l10n.text(
+      fr: 'Utilisateur hors ligne',
+      en: 'User offline',
+    ),
+    'Call Declined' => l10n.text(fr: 'Appel refusé', en: 'Call declined'),
+    _ => _statusTitle,
+  };
+
+  String _localizedStatusSubtitle(AppLocalizations l10n) {
+    if (_statusTitle == 'Connecting...') {
+      return l10n.text(
+        fr: 'Établissement d’une connexion sécurisée',
+        en: 'Establishing a secure connection',
+      );
+    }
+    if (_statusTitle == 'Starting Group Call...') {
+      if (widget.recipientNames.isEmpty) {
+        return l10n.text(
+          fr: 'Invitation des participants…',
+          en: 'Inviting participants…',
+        );
+      }
+      return l10n.text(
+        fr: 'Appel de ${widget.recipientNames.length} participants…',
+        en: 'Calling ${widget.recipientNames.length} participants…',
+      );
+    }
+    if (_statusTitle == 'User Offline') {
+      return l10n.text(
+        fr: '${widget.recipientName} est actuellement indisponible',
+        en: '${widget.recipientName} is currently unavailable',
+      );
+    }
+    if (_statusTitle == 'Call Declined') {
+      return l10n.text(
+        fr: '${widget.recipientName} ne peut pas répondre',
+        en: '${widget.recipientName} is unable to answer',
+      );
+    }
+    return _statusSubtitle.isNotEmpty
+        ? _statusSubtitle
+        : l10n.text(
+            fr: 'Appel de ${widget.recipientName}…',
+            en: 'Calling ${widget.recipientName}…',
+          );
+  }
+
   @override
   void dispose() {
     _spinController.dispose();
@@ -216,6 +276,7 @@ class _ConnectingPageState extends State<ConnectingPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     // Watch SignalingService for callee responses (declined or offline)
     final signaling = context.watch<SignalingService>();
 
@@ -235,73 +296,85 @@ class _ConnectingPageState extends State<ConnectingPage>
       }
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.callBackground,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Spinner + camera or phone icon
-            _buildSpinner(),
-            const SizedBox(height: 28),
-            // Connecting text
-            Text(
-              _statusTitle,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Subtitle
-            Text(
-              _statusSubtitle.isNotEmpty
-                  ? _statusSubtitle
-                  : 'Calling ${widget.recipientName}...',
-              style: TextStyle(
-                color: AppColors.textMuted.withOpacity(0.8),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Status badge
-            _buildStatusBadge(),
-            const SizedBox(height: 28),
-            // Enter room button for group calls
-            if (widget.isGroupCall) ...[
-              ElevatedButton.icon(
-                onPressed: () {
-                  _hasNavigatedToCall = true;
-                  _navigateToCallPage();
-                },
-                icon: const Icon(Icons.meeting_room_rounded, size: 16),
-                label: const Text('Enter Meeting Room'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 2,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
+    return Theme(
+      data: AppTheme.lightTheme(),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF4E8F72),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: Palette.callGradient),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Spinner + camera or phone icon
+                _buildSpinner(),
+                const SizedBox(height: 28),
+                // Connecting text
+                Text(
+                  _localizedStatusTitle(l10n),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            // Cancel button
-            TextButton(
-              onPressed: _cancelAndExit,
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  color: AppColors.callDecline,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 10),
+                // Subtitle
+                Text(
+                  _localizedStatusSubtitle(l10n),
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 24),
+                // Status badge
+                _buildStatusBadge(l10n),
+                const SizedBox(height: 28),
+                // Enter room button for group calls
+                if (widget.isGroupCall) ...[
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      _hasNavigatedToCall = true;
+                      _navigateToCallPage();
+                    },
+                    icon: const Icon(Icons.meeting_room_rounded, size: 16),
+                    label: Text(
+                      l10n.text(
+                        fr: 'Entrer dans la salle',
+                        en: 'Enter meeting room',
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 2,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // Cancel button
+                TextButton(
+                  onPressed: _cancelAndExit,
+                  child: Text(
+                    l10n.cancel,
+                    style: TextStyle(
+                      color: AppColors.callDecline,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -323,7 +396,7 @@ class _ConnectingPageState extends State<ConnectingPage>
                 child: CustomPaint(
                   size: const Size(80, 80),
                   painter: _SpinnerPainter(
-                    color: AppColors.primary,
+                    color: const Color(0xFF3DDC97),
                     strokeWidth: 3,
                   ),
                 ),
@@ -334,16 +407,16 @@ class _ConnectingPageState extends State<ConnectingPage>
                 height: 56,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.primary.withOpacity(0.12),
+                  color: const Color(0xFF3DDC97).withValues(alpha: 0.16),
                 ),
                 child: Icon(
                   widget.isGroupCall
                       ? Icons.groups_rounded
                       : (widget.isVideoCall
-                          ? Icons.videocam_rounded
-                          : Icons.phone_rounded),
+                            ? Icons.videocam_rounded
+                            : Icons.phone_rounded),
                   size: 24,
-                  color: AppColors.primary.withOpacity(0.8),
+                  color: const Color(0xFF3DDC97),
                 ),
               ),
             ],
@@ -353,15 +426,13 @@ class _ConnectingPageState extends State<ConnectingPage>
     );
   }
 
-  Widget _buildStatusBadge() {
+  Widget _buildStatusBadge(AppLocalizations l10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFDCE7DF),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -371,16 +442,22 @@ class _ConnectingPageState extends State<ConnectingPage>
             height: 7,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.onlineGreen,
+              color: Color(0xFF3DDC97),
             ),
           ),
           const SizedBox(width: 9),
           Text(
             widget.isVideoCall
-                ? 'Encrypting video stream...'
-                : 'Encrypting voice stream...',
+                ? l10n.text(
+                    fr: 'Chiffrement du flux vidéo…',
+                    en: 'Encrypting video stream…',
+                  )
+                : l10n.text(
+                    fr: 'Chiffrement du flux audio…',
+                    en: 'Encrypting voice stream…',
+                  ),
             style: TextStyle(
-              color: AppColors.textMuted.withOpacity(0.85),
+              color: AppColors.textMuted,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -402,7 +479,7 @@ class _SpinnerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final paint = Paint()
-      ..color = color.withOpacity(0.6)
+      ..color = color.withValues(alpha: 0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;

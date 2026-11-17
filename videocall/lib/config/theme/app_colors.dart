@@ -1,55 +1,65 @@
 import 'package:flutter/material.dart';
 
+class Palette {
+  Palette._();
+
+  static const LinearGradient callGradient = LinearGradient(
+    begin: Alignment(-0.342, -0.94),
+    end: Alignment(0.342, 0.94),
+    colors: [Color(0xFF8FC1A8), Color(0xFF4E8F72)],
+  );
+}
+
 class AppColors {
   // Primary colors
-  static const Color primary = Color(0xFF2D5016);      // Dark green
-  static const Color primaryLight = Color(0xFF3A6B1F); // Light green
-  static const Color primaryDark = Color(0xFF203B10);  // Darker green
+  static const Color primary = Color(0xFF1E9E64);
+  static const Color primaryLight = Color(0xFF27B576);
+  static const Color primaryDark = Color(0xFF117A4D);
 
   // Accent colors
-  static const Color accent = Color(0xFFFFD700);       // Yellow
-  static const Color error = Color(0xFFDC143C);        // Red
+  static const Color accent = Color(0xFFF2B231);
+  static const Color error = Color(0xFFE5484D);
 
   // Background colors
-  static const Color background = Color(0xFFF1F6F4);   // Page background
-  static const Color cardBackground = Color(0xFFFFFFFF); // White
-  static const Color inputBackground = Color(0xFFF3F6F4); // Light input
+  static const Color background = Color(0xFFEDF4EA);
+  static const Color cardBackground = Color(0xFFFFFFFF);
+  static const Color inputBackground = Color(0xFFFFFFFF);
 
   // Text colors
-  static const Color textPrimary = Color(0xFF253229);  // Dark text
-  static const Color textMuted = Color(0xFF929A95);    // Muted text
-  static const Color textLight = Color(0xFFF4F7E9);    // Light text (for white bg)
+  static const Color textPrimary = Color(0xFF10231A);
+  static const Color textMuted = Color(0xFF587064);
+  static const Color textLight = Color(0xFFEAF4EE);
 
   // Status colors
-  static const Color onlineGreen = Color(0xFF4DBB55);
-  static const Color awayYellow = Color(0xFFE6A100);
+  static const Color onlineGreen = Color(0xFF1E9E64);
+  static const Color awayYellow = Color(0xFFF2B231);
 
   // Signal indicator
-  static const Color signalStrong = Color(0xFF3A6B1F);
-  static const Color signalMedium = Color(0xFF6B9B4F);
-  static const Color signalWeak = Color(0xFFB0C9A0);
-  static const Color signalExcellent = Color(0xFF10B981); // 4 bars: Emerald Green
-  static const Color signalGood = Color(0xFF84CC16);      // 3 bars: Lime Green
-  static const Color signalFair = Color(0xFFF59E0B);      // 2 bars: Amber / Orange
-  static const Color signalPoor = Color(0xFFEF4444);      // 1 bar: Red
+  static const Color signalStrong = Color(0xFF1E9E64);
+  static const Color signalMedium = Color(0xFF27B576);
+  static const Color signalWeak = Color(0xFFF2B231);
+  static const Color signalExcellent = Color(0xFF3DDC97);
+  static const Color signalGood = Color(0xFF1E9E64);
+  static const Color signalFair = Color(0xFFF2B231);
+  static const Color signalPoor = Color(0xFFE5484D);
 
   // Call action colors
-  static const Color callDecline = Color(0xFFDC3545);
-  static const Color callAccept = Color(0xFF3A5A28);
+  static const Color callDecline = Color(0xFFE5484D);
+  static const Color callAccept = Color(0xFF117A4D);
 
   // Stat card tints
-  static const Color statGreenTint = Color(0xFFD6E8CE);
-  static const Color statYellowTint = Color(0xFFF0EDD0);
-  static const Color statNeutralTint = Color(0xFFE8E8E0);
+  static const Color statGreenTint = Color(0xFFBFE8CF);
+  static const Color statYellowTint = Color(0xFFFBE7A8);
+  static const Color statNeutralTint = Color(0xFFEAF4EE);
 
   // Star rating
-  static const Color starDefault = Color(0xFFCBC3B5);
-  static const Color starActive = Color(0xFFD4A84B);
+  static const Color starDefault = Color(0xFF8DA69A);
+  static const Color starActive = Color(0xFFF2B231);
 
   // Page background (sage/warm white used on call screens)
-  static const Color callBackground = Color(0xFFF3F5F0);
+  static const Color callBackground = Color(0xFFEDF4EA);
 
   // Transparency
-  static const Color shadowColor = Color.fromRGBO(35, 53, 42, 0.16);
-  static const Color borderColor = Color.fromRGBO(244, 247, 233, 0.11);
+  static const Color shadowColor = Color.fromRGBO(16, 35, 26, 0.13);
+  static const Color borderColor = Color.fromRGBO(16, 35, 26, 0.09);
 }

@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 class AnimatedBackground extends StatefulWidget {
-  const AnimatedBackground({Key? key}) : super(key: key);
+  const AnimatedBackground({super.key});
 
   @override
   State<AnimatedBackground> createState() => _AnimatedBackgroundState();
@@ -31,6 +31,14 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = isDark
+        ? const Color(0xFF09120E)
+        : const Color(0xFFEDF4EA);
+    final ambientA = isDark ? const Color(0xFF0F3D2A) : const Color(0xFFBFE8CF);
+    final ambientB = isDark ? const Color(0xFF3A2E0B) : const Color(0xFFFBE7A8);
+    final ambientC = isDark ? const Color(0xFF3F1517) : const Color(0xFFFAC9C5);
+
     return IgnorePointer(
       child: ClipRect(
         child: AnimatedBuilder(
@@ -39,72 +47,33 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
             return Stack(
               fit: StackFit.expand,
               children: [
-                const ColoredBox(color: Color(0xFFFFFFFF)),
+                ColoredBox(color: background),
                 _buildCircle(
-                  size: 300,
-                  color: const Color(0xFF2D5016),
-                  left: 0.05,
-                  top: -0.10,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(20, 0),
-                ),
-                _buildCircle(
-                  size: 250,
-                  color: const Color(0xFF3A6B1F),
-                  right: 0.10,
-                  bottom: 0.05,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(25, 1),
+                  size: 520,
+                  color: ambientA,
+                  left: -0.25,
+                  top: -0.24,
+                  blur: 90,
+                  opacity: 0.52,
+                  motion: _motion(27, 0),
                 ),
                 _buildCircle(
-                  size: 280,
-                  color: const Color(0xFFFFD700),
-                  right: 0.05,
-                  top: 0.15,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(22, 2),
+                  size: 400,
+                  color: ambientB,
+                  right: -0.18,
+                  top: 0.05,
+                  blur: 100,
+                  opacity: 0.46,
+                  motion: _motion(24, 1),
                 ),
                 _buildCircle(
-                  size: 200,
-                  color: const Color(0xFFFFD700),
-                  left: 0.08,
-                  bottom: 0.20,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(26, 3),
-                ),
-                _buildShape(
-                  size: 220,
-                  color: const Color(0xFFDC143C),
-                  left: -0.05,
-                  top: 0.40,
-                  rotate: 0.785,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(24, 4),
-                ),
-                _buildShape(
-                  size: 260,
-                  color: const Color(0xFF2D5016),
-                  right: 0.03,
-                  top: 0.60,
-                  rotate: 0.785,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(23, 5),
-                ),
-                _buildShape(
-                  size: 180,
-                  color: const Color(0xFFFFD700),
-                  right: 0.20,
-                  bottom: 0.30,
-                  rotate: 0.785,
-                  blur: 80,
-                  opacity: 0.25,
-                  motion: _motion(21, 6),
+                  size: 460,
+                  color: ambientC,
+                  right: 0.18,
+                  bottom: -0.3,
+                  blur: 110,
+                  opacity: 0.4,
+                  motion: _motion(25, 2),
                 ),
               ],
             );
@@ -177,7 +146,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
                 shape: BoxShape.rectangle,
                 borderRadius: rotate == 0 ? BorderRadius.circular(size) : null,
                 boxShadow: [
-                  BoxShadow(color: color.withOpacity(0.7), blurRadius: 60),
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.7),
+                    blurRadius: 60,
+                  ),
                 ],
               ),
             ),

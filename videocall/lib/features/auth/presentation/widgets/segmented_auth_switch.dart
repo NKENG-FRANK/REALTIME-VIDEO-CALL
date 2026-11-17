@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/l10n/app_localizations.dart';
 
@@ -7,10 +8,10 @@ class SegmentedAuthSwitch extends StatelessWidget {
   final ValueChanged<bool> onModeChanged;
 
   const SegmentedAuthSwitch({
-    Key? key,
+    super.key,
     required this.isSignUp,
     required this.onModeChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +22,9 @@ class SegmentedAuthSwitch extends StatelessWidget {
       height: 48,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F2),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8E4)),
+        border: Border.all(color: AppColors.borderColor),
       ),
       child: Stack(
         children: [
@@ -63,10 +64,11 @@ class SegmentedAuthSwitch extends StatelessWidget {
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 200),
                       style: TextStyle(
-                        fontFamily: 'Inter',
                         fontSize: 13,
-                        fontWeight: !isSignUp ? FontWeight.w800 : FontWeight.w600,
-                        color: !isSignUp ? primaryColor : const Color(0xFF64748B),
+                        fontWeight: !isSignUp
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: !isSignUp ? primaryColor : AppColors.textMuted,
                         letterSpacing: 0.1,
                       ),
                       child: Text(l10n.signIn),
@@ -84,10 +86,11 @@ class SegmentedAuthSwitch extends StatelessWidget {
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 200),
                       style: TextStyle(
-                        fontFamily: 'Inter',
                         fontSize: 13,
-                        fontWeight: isSignUp ? FontWeight.w800 : FontWeight.w600,
-                        color: isSignUp ? primaryColor : const Color(0xFF64748B),
+                        fontWeight: isSignUp
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        color: isSignUp ? primaryColor : AppColors.textMuted,
                         letterSpacing: 0.1,
                       ),
                       child: Text(l10n.signUp),

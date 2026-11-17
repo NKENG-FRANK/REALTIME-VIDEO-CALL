@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
 
 /// A control button definition for the call controls bar.
@@ -28,13 +29,13 @@ class CallControls extends StatelessWidget {
   final List<CallControlItem> controls;
 
   const CallControls({
-    Key? key,
+    super.key,
     required this.userName,
     required this.userInitials,
     required this.elapsed,
     required this.participantCount,
     required this.controls,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -42,15 +43,14 @@ class CallControls extends StatelessWidget {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
         return Container(
+          constraints: const BoxConstraints(minHeight: 84),
           padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 12 : 20,
-            vertical: isMobile ? 10 : 12,
+            horizontal: isMobile ? 12 : 24,
+            vertical: 12,
           ),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.92),
-            border: const Border(
-              top: BorderSide(color: Color(0xFFDCE7DF)),
-            ),
+            color: const Color(0xFF13231A).withValues(alpha: 0.92),
+            border: const Border(top: BorderSide(color: Color(0x1FFFFFFF))),
           ),
           child: isMobile
               ? Center(child: _buildControlButtons())
@@ -102,16 +102,13 @@ class CallControls extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               elapsed,
-              style: const TextStyle(
-                fontSize: 9,
-                color: AppColors.textMuted,
-              ),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF8DA69A)),
             ),
           ],
         ),
@@ -140,26 +137,18 @@ class CallControls extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.people_alt,
-          size: 14,
-          color: AppColors.textMuted,
-        ),
+        Icon(Icons.people_alt, size: 16, color: const Color(0xFF8DA69A)),
         const SizedBox(width: 5),
         Text(
           '$participantCount',
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: Colors.white,
           ),
         ),
         const SizedBox(width: 3),
-        const Icon(
-          Icons.chevron_right,
-          size: 14,
-          color: AppColors.textMuted,
-        ),
+        const Icon(Icons.chevron_right, size: 14, color: AppColors.textMuted),
       ],
     );
   }
@@ -188,22 +177,22 @@ class _ControlButtonState extends State<_ControlButton> {
         onTap: widget.item.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: isEnd ? 48 : 44,
-          height: isEnd ? 48 : 44,
+          width: 54,
+          height: 54,
           decoration: BoxDecoration(
             color: isEnd
                 ? AppColors.callDecline
+                : widget.item.isActive
+                ? AppColors.primary.withValues(alpha: 0.75)
                 : _hovering
-                    ? const Color(0xFFE0EAE2)
-                    : const Color(0xFFF0F5F1),
+                ? Colors.white.withValues(alpha: 0.24)
+                : Colors.white.withValues(alpha: 0.14),
             shape: BoxShape.circle,
             boxShadow: _hovering
                 ? [
                     BoxShadow(
-                      color: (isEnd
-                              ? AppColors.callDecline
-                              : AppColors.primary)
-                          .withOpacity(0.18),
+                      color: (isEnd ? AppColors.callDecline : AppColors.primary)
+                          .withValues(alpha: 0.18),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -212,13 +201,7 @@ class _ControlButtonState extends State<_ControlButton> {
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                widget.item.icon,
-                size: isEnd ? 20 : 17,
-                color: isEnd ? Colors.white : AppColors.primary,
-              ),
-            ],
+            children: [Icon(widget.item.icon, size: 21, color: Colors.white)],
           ),
         ),
       ),
