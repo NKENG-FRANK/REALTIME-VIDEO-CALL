@@ -207,6 +207,14 @@ class _CallwaveWorkspaceState extends State<CallwaveWorkspace> {
   void _joinRoom() {
     final parsed = MeetingLinkService.parseInput(_roomCode.text);
     if (parsed.roomId.isEmpty) return;
+    if (!MeetingLinkService.isValidRoomId(parsed.roomId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('Code de salle invalide', 'Invalid room code')),
+        ),
+      );
+      return;
+    }
     final title = parsed.title ?? 'Meeting ${parsed.roomId}';
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -771,6 +779,8 @@ class _CallwaveWorkspaceState extends State<CallwaveWorkspace> {
                               : constraints.maxWidth >= 560
                               ? 2
                               : 1;
+                          final isDirectory =
+                              controller.selectedTab == 'All Users';
                           return GridView.builder(
                             itemCount: contacts.length,
                             gridDelegate:
@@ -778,16 +788,43 @@ class _CallwaveWorkspaceState extends State<CallwaveWorkspace> {
                                   crossAxisCount: columns,
                                   mainAxisSpacing: 12,
                                   crossAxisSpacing: 12,
-                                  mainAxisExtent: columns == 1 ? 108 : 232,
+                                  mainAxisExtent: isDirectory
+                                      ? 176
+                                      : columns == 1
+                                      ? 108
+                                      : 232,
                                 ),
-                            itemBuilder: (context, index) => _PersonCard(
-                              contact: contacts[index],
-                              showSave: controller.selectedTab == 'All Users',
-                              compact: columns == 1,
-                              onCall: () => _callContact(contacts[index]),
-                              onSave: () =>
-                                  _saveContact(controller, contacts[index]),
-                            ),
+                            itemBuilder: (context, index) => isDirectory
+                                ? _DirectoryPersonCard(
+                                    contact: contacts[index],
+                                    saved: controller.savedContacts.any(
+                                      (item) => item.id == contacts[index].id,
+                                    ),
+                                    onSave: () => _saveContact(
+                                      controller,
+                                      contacts[index],
+                                    ),
+                                    onCall: (isVideo) => launchDirectCall(
+                                      context,
+                                      isVideo: isVideo,
+                                      recipientUserId: contacts[index].id,
+                                      recipientName:
+                                          contacts[index].displayName,
+                                      recipientMatricule:
+                                          contacts[index].matricule,
+                                    ),
+                                  )
+                                : _PersonCard(
+                                    contact: contacts[index],
+                                    showSave:
+                                        controller.selectedTab == 'All Users',
+                                    compact: columns == 1,
+                                    onCall: () => _callContact(contacts[index]),
+                                    onSave: () => _saveContact(
+                                      controller,
+                                      contacts[index],
+                                    ),
+                                  ),
                           );
                         },
                       ),
@@ -2230,6 +2267,125 @@ class _CallDetail extends StatelessWidget {
               onPressed: onCall,
               icon: const Icon(Icons.call_rounded),
               label: Text(call.isGroup ? l10n.startGroupCall : l10n.callAgain),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DirectoryPersonCard extends StatelessWidget {
+  const _DirectoryPersonCard({
+    required this.contact,
+    required this.saved,
+    required this.onSave,
+    required this.onCall,
+  });
+
+  final ContactItem contact;
+  final bool saved;
+  final VoidCallback onSave;
+  final ValueChanged<bool> onCall;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _Avatar(
+                  initials: contact.initials,
+                  color: contact.color,
+                  size: 52,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        contact.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        contact.matricule,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 18,
+              child: Text(
+                contact.department ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                FilledButton.icon(
+                  onPressed: saved ? null : onSave,
+                  icon: Icon(
+                    saved ? Icons.check_rounded : Icons.add_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    saved
+                        ? l10n.text(fr: 'Ajouté', en: 'Added')
+                        : l10n.text(fr: 'Ajouter', en: 'Add'),
+                  ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    minimumSize: const Size(0, 36),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: l10n.text(fr: 'Appel audio', en: 'Audio call'),
+                  onPressed: () => onCall(false),
+                  icon: const Icon(
+                    Icons.call_outlined,
+                    size: 19,
+                    color: AppColors.primary,
+                  ),
+                ),
+                IconButton(
+                  tooltip: l10n.text(fr: 'Appel vidéo', en: 'Video call'),
+                  onPressed: () => onCall(true),
+                  icon: const Icon(
+                    Icons.videocam_outlined,
+                    size: 20,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

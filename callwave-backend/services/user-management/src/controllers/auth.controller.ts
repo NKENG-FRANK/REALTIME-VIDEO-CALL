@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '@callwave/database';
 import { hashPassword, verifyPassword } from '../utils/password.js';
-import { generateAccessToken, generateRefreshToken } from '../utils/jwt.js';
+import { generateAccessToken, generateRefreshToken, hashRefreshToken } from '../utils/jwt.js';
 import { formatMatricule } from '../utils/matricule.js';
 
 export async function register(req: Request, res: Response, next: NextFunction) {
@@ -65,7 +65,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
       const sessionRes = await client.query(
         `INSERT INTO user_sessions (user_id, refresh_token_hash, client_info, ip_address, expires_at)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [userId, refreshToken, req.body.clientInfo || 'Unknown Client', ipAddress, refreshExpire]
+        [userId, hashRefreshToken(refreshToken), req.body.clientInfo || 'Unknown Client', ipAddress, refreshExpire]
       );
 
       await client.query('COMMIT');
@@ -130,14 +130,13 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const refreshToken = generateRefreshToken();
 
     // Store session
-    // Refresh tokens in DB should ideally be hashed, but for simplicity here we store it
     const refreshExpire = new Date();
     refreshExpire.setDate(refreshExpire.getDate() + 7); // 7 days
 
     const sessionRes = await pool.query(
       `INSERT INTO user_sessions (user_id, refresh_token_hash, client_info, ip_address, expires_at)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [user.id, refreshToken, clientInfo || 'Unknown Client', ipAddress, refreshExpire]
+      [user.id, hashRefreshToken(refreshToken), clientInfo || 'Unknown Client', ipAddress, refreshExpire]
     );
 
     // Update last login
@@ -185,30 +184,21 @@ export async function refreshToken(req: Request, res: Response, next: NextFuncti
   try {
     const { refreshToken } = req.body;
 
+    const newRefreshToken = generateRefreshToken();
     const sessionRes = await pool.query(
-      'SELECT id, user_id, is_revoked, expires_at FROM user_sessions WHERE refresh_token_hash = $1',
-      [refreshToken]
+      `UPDATE user_sessions
+       SET refresh_token_hash = $2, last_activity_at = CURRENT_TIMESTAMP
+       WHERE refresh_token_hash = $1 AND is_revoked = FALSE AND expires_at > CURRENT_TIMESTAMP
+       RETURNING user_id`,
+      [hashRefreshToken(refreshToken), hashRefreshToken(newRefreshToken)]
     );
 
     if (sessionRes.rowCount === 0) {
-      return res.status(401).json({ error: 'Invalid refresh token' });
+      return res.status(401).json({ error: 'Invalid, expired, or revoked refresh token' });
     }
 
-    const session = sessionRes.rows[0];
-
-    if (session.is_revoked || new Date() > new Date(session.expires_at)) {
-      return res.status(401).json({ error: 'Refresh token expired or revoked' });
-    }
-
-    const newAccessToken = generateAccessToken({ userId: session.user_id });
-    
-    // Update last activity
-    await pool.query(
-      'UPDATE user_sessions SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [session.id]
-    );
-
-    res.json({ accessToken: newAccessToken });
+    const newAccessToken = generateAccessToken({ userId: sessionRes.rows[0].user_id });
+    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch (error) {
     next(error);
   }

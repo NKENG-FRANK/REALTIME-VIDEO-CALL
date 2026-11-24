@@ -5,17 +5,28 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
+import 'package:videocall/config/api_config.dart';
 import 'package:videocall/config/theme/app_theme.dart';
 import 'package:videocall/core/l10n/app_localizations_delegate.dart';
 import 'package:videocall/core/widgets/call/control_dock.dart';
 import 'package:videocall/core/widgets/call/video_tile.dart';
 import 'package:videocall/core/services/webrtc_call_service.dart';
+import 'package:videocall/core/services/signaling_service.dart';
+import 'package:videocall/core/services/contacts_service.dart';
+import 'package:videocall/core/services/turn_credentials_service.dart';
+import 'package:videocall/core/services/meeting_link_service.dart';
 import 'package:videocall/features/call/presentation/pages/call_page.dart';
 import 'package:videocall/features/call/presentation/pages/audio_call_page.dart';
 import 'package:videocall/features/auth/presentation/controllers/auth_controller.dart';
@@ -28,6 +39,146 @@ import 'package:videocall/ui/callwave_workspace.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() {
+  test('Windows uses the local Docker services by default', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(ApiConfig.userManagementBaseUrl, 'http://localhost:3000/api/v1');
+    expect(ApiConfig.audioCallsBaseUrl, 'ws://localhost:3001');
+    expect(ApiConfig.videoCallsBaseUrl, 'ws://localhost:3002');
+  });
+
+  test('Android uses the configured LAN fallback by default', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    expect(
+      ApiConfig.registerUrl,
+      'http://${ApiConfig.defaultLanIp}:3000/api/v1/auth/register',
+    );
+  });
+
+  test('signaling reconnects with a changed authentication token', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final sockets = <WebSocket>[];
+    final tokens = <String>[];
+    server.listen((request) async {
+      final socket = await WebSocketTransformer.upgrade(request);
+      sockets.add(socket);
+      socket.add(
+        '0${jsonEncode({'sid': 'engine-session', 'upgrades': <String>[], 'pingInterval': 25000, 'pingTimeout': 20000, 'maxPayload': 1000000})}',
+      );
+      socket.listen((message) {
+        if (message is String && message.startsWith('40')) {
+          tokens.add(jsonDecode(message.substring(2))['token'] as String);
+          socket.add('40${jsonEncode({'sid': 'socket-session'})}');
+        }
+      });
+    });
+    final signaling = SignalingService(
+      serverUrl: 'http://127.0.0.1:${server.port}',
+    );
+    addTearDown(() async {
+      signaling.dispose();
+      for (final socket in sockets) {
+        await socket.close();
+      }
+      await server.close(force: true);
+    });
+
+    Future<void> waitForConnection() async {
+      if (signaling.isConnected) return;
+      final connected = Completer<void>();
+      void listener() {
+        if (signaling.isConnected && !connected.isCompleted)
+          connected.complete();
+      }
+
+      signaling.addListener(listener);
+      try {
+        await connected.future.timeout(const Duration(seconds: 5));
+      } finally {
+        signaling.removeListener(listener);
+      }
+    }
+
+    await signaling.connect('first-token');
+    await waitForConnection();
+    await signaling.connect('second-token');
+    await waitForConnection();
+    expect(tokens, ['first-token', 'second-token']);
+
+    SharedPreferences.setMockInitialValues({});
+    signaling.disconnect();
+    await signaling.ensureConnected();
+    expect(signaling.isConnected, isFalse);
+  });
+
+  test('TURN credentials require a valid authenticated response', () async {
+    final endpoint = Uri.parse('https://example.test/turn-credentials');
+    final expiresAt = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 300;
+    final client = MockClient((request) async {
+      expect(request.url, endpoint);
+      expect(request.headers['Authorization'], 'Bearer test-token');
+      return http.Response(
+        jsonEncode({
+          'urls': ['turn:example.test:3478?transport=udp'],
+          'username': 'temporary-user',
+          'credential': 'temporary-password',
+          'expiresAt': expiresAt,
+        }),
+        200,
+      );
+    });
+    final credentials = await TurnCredentialsService.fetch(
+      token: 'test-token',
+      client: client,
+      endpoint: endpoint,
+    );
+    expect(credentials?['username'], 'temporary-user');
+    expect(credentials?['urls'], ['turn:example.test:3478?transport=udp']);
+    client.close();
+
+    final expired = MockClient(
+      (_) async => http.Response(
+        jsonEncode({
+          'urls': ['turn:example.test:3478'],
+          'username': 'temporary-user',
+          'credential': 'temporary-password',
+          'expiresAt': 1,
+        }),
+        200,
+      ),
+    );
+    expect(
+      await TurnCredentialsService.fetch(
+        token: 'test-token',
+        client: expired,
+        endpoint: endpoint,
+      ),
+      isNull,
+    );
+    expired.close();
+
+    final unavailable = MockClient((_) async => http.Response('', 503));
+    expect(
+      await TurnCredentialsService.fetch(
+        token: 'test-token',
+        client: unavailable,
+        endpoint: endpoint,
+      ),
+      isNull,
+    );
+    unavailable.close();
+  });
+
+  test('room IDs are unpredictable UUIDv4 capabilities', () {
+    final first = MeetingLinkService.createRoomId();
+    final second = MeetingLinkService.createRoomId();
+    expect(MeetingLinkService.isValidRoomId(first), isTrue);
+    expect(MeetingLinkService.isValidRoomId(second), isTrue);
+    expect(first, isNot(second));
+    expect(MeetingLinkService.isValidRoomId('group-123456'), isFalse);
+  });
+
   testWidgets('mobile auth switches forms and fits a keyboard-sized viewport', (
     tester,
   ) async {
@@ -93,7 +244,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.lightTheme(),
-        home: CallPage(isGroupCall: true, callService: _UiCallService()),
+        home: CallPage(
+          roomId: MeetingLinkService.createRoomId(),
+          isGroupCall: true,
+          callService: _UiCallService(),
+        ),
       ),
     );
     await tester.pump();
@@ -188,6 +343,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(CallwaveWorkspace), findsNothing);
     expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('mobile video tile fallback and dock controls render', (
@@ -242,6 +398,43 @@ void main() {
     await tester.tap(find.byTooltip('End call'));
     expect(muted, isTrue);
     expect(ended, isTrue);
+  });
+
+  testWidgets('desktop directory cards show contact details and actions', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(860, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthController()),
+          ChangeNotifierProvider(create: (_) => CallsController()),
+          ChangeNotifierProvider<ContactsController>(
+            create: (_) => _DirectoryContactsController(),
+          ),
+          ChangeNotifierProvider(create: (_) => SettingsController()),
+        ],
+        child: const _LocalizedWorkspaceTestApp(initialPage: 'people'),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Amina Nkemba'), findsOneWidget);
+    expect(find.text('A2041873'), findsOneWidget);
+    expect(find.text('Finance'), findsOneWidget);
+    expect(find.byTooltip('Appel audio'), findsNWidgets(2));
+    expect(find.byTooltip('Appel vidéo'), findsNWidgets(2));
+    expect(find.text('Ajouté'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajouter'));
+    await tester.pump();
+    expect(find.text('Ajouté'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('workspace navigates between Calls, People, and Settings', (
@@ -317,8 +510,46 @@ class _UiCallService extends WebRTCCallService {
   }
 }
 
+class _DirectoryContactsController extends ContactsController {
+  final List<ContactItem> people = [
+    ContactItem(
+      id: 'one',
+      username: 'amina',
+      matricule: 'A2041873',
+      displayName: 'Amina Nkemba',
+      department: 'Finance',
+    ),
+    ContactItem(
+      id: 'two',
+      username: 'user',
+      matricule: 'B1234567',
+      displayName: 'Second Contact',
+    ),
+  ];
+  bool firstSaved = false;
+
+  @override
+  List<ContactItem> get currentList => people;
+  @override
+  List<ContactItem> get savedContacts => [people[1], if (firstSaved) people[0]];
+  @override
+  String get selectedTab => 'All Users';
+  @override
+  bool get isLoading => false;
+  @override
+  Future<void> refreshData() async {}
+  @override
+  Future<bool> saveContact(ContactItem item) async {
+    firstSaved = true;
+    notifyListeners();
+    return true;
+  }
+}
+
 class _LocalizedWorkspaceTestApp extends StatelessWidget {
-  const _LocalizedWorkspaceTestApp();
+  const _LocalizedWorkspaceTestApp({this.initialPage = 'calls'});
+
+  final String initialPage;
 
   @override
   Widget build(BuildContext context) => Consumer<SettingsController>(
@@ -336,7 +567,7 @@ class _LocalizedWorkspaceTestApp extends StatelessWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: const CallwaveWorkspace(),
+        home: CallwaveWorkspace(initialPage: initialPage),
         routes: {
           '/auth': (_) =>
               const Scaffold(body: Center(child: Text('Signed out'))),

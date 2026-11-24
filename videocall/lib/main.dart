@@ -143,6 +143,7 @@ class MyApp extends StatelessWidget {
             // Also start background call listener
             BackgroundCallService.start(token);
           };
+          authCtrl.onUserSignedOut = signalingService.disconnect;
 
           if (authCtrl.isAuthenticated && !signalingService.isConnected) {
             AuthService.getToken().then((token) {

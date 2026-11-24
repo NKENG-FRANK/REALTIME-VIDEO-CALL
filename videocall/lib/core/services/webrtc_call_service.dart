@@ -10,6 +10,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../config/api_config.dart';
 import 'auth_service.dart';
+import 'turn_credentials_service.dart';
 
 enum CallState { idle, connecting, connected, ended }
 
@@ -158,24 +159,25 @@ class WebRTCCallService extends ChangeNotifier {
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
       // Primary STUN servers
-      {'urls': 'stun:144.91.89.100:3478'},
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun.cloudflare.com:3478'},
-      // Dedicated CallWave CoTURN Relay (UDP & TCP fallback on port 3478)
-      {
-        'urls': [
-          'turn:144.91.89.100:3478',
-          'turn:144.91.89.100:3478?transport=tcp',
-        ],
-        'username': 'callwave',
-        'credential': 'callwave_secret',
-      },
     ],
     'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
     'iceTransportPolicy': 'all',
   };
+
+  Future<Map<String, dynamic>?> _turnConfiguration() async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) return null;
+    final turn = await TurnCredentialsService.fetch(token: token);
+    if (turn == null) return null;
+    return {
+      ..._iceServers,
+      'iceServers': [...(_iceServers['iceServers'] as List), turn],
+    };
+  }
 
   late final Future<void> _initRenderersFuture = _initRenderers();
 
@@ -270,7 +272,7 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Connected to Video Calls Socket.io server');
       if (_currentRoomId != null && _callState == CallState.connected) {
         debugPrint(
-          '[WebRTC] Socket reconnected during active call - rejoining room $_currentRoomId',
+          '[WebRTC] Socket reconnected during active call - rejoining room',
         );
         final callType = _isGroupCall
             ? (_isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO')
@@ -301,7 +303,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     // ── room:joined ────────────────────────────────────────────────────────
     _socket!.on('room:joined', (data) async {
-      debugPrint('[WebRTC] Joined room: $data');
+      debugPrint('[WebRTC] Joined room');
       final map = data as Map<String, dynamic>?;
       final existingParticipants = map?['participants'] as List?;
 
@@ -613,7 +615,7 @@ class WebRTCCallService extends ChangeNotifier {
         );
         return;
       }
-      debugPrint('[WebRTC] Received call:ended payload: $data');
+      debugPrint('[WebRTC] Received call:ended');
 
       // If a specific peer ended their call, just remove that peer connection.
       // NEVER blindly call endCall() — only treat as peer-left.
@@ -659,7 +661,7 @@ class WebRTCCallService extends ChangeNotifier {
         debugPrint('[WebRTC] Ignoring stale room:participant_left');
         return;
       }
-      debugPrint('[WebRTC] Participant left: $data');
+      debugPrint('[WebRTC] Participant left');
 
       final map = data is Map
           ? data as Map<String, dynamic>
@@ -835,7 +837,7 @@ class WebRTCCallService extends ChangeNotifier {
   /// Pass [isGroupCall] = true for group calls so the correct
   /// `callType` (`GROUP_VIDEO` / `GROUP_AUDIO`) is emitted and
   /// per-peer connection logic is enabled.
-  Future<void> joinCallRoom(
+  Future<bool> joinCallRoom(
     String roomId, {
     bool isVideoCall = true,
     bool isGroupCall = false,
@@ -863,7 +865,7 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint(
         '[WebRTC] Socket failed to connect after 8s — aborting joinCallRoom',
       );
-      return;
+      return false;
     }
 
     // Emit the correct callType so the server handles the room correctly.
@@ -877,10 +879,12 @@ class WebRTCCallService extends ChangeNotifier {
     }
     await startLocalMedia(video: isVideoCall, audio: true);
 
-    debugPrint(
-      '[WebRTC] Emitting room:join for room $roomId (callType: $callType)',
-    );
-    _socket!.emit('room:join', {'roomId': roomId, 'callType': callType});
+    debugPrint('[WebRTC] Emitting room:join (callType: $callType)');
+    final result = await _emitWithAck('room:join', {
+      'roomId': roomId,
+      'callType': callType,
+    });
+    return result?['roomId'] == roomId;
   }
 
   // ── Mediasoup SFU Implementation ─────────────────────────────────────────
@@ -1326,7 +1330,9 @@ class WebRTCCallService extends ChangeNotifier {
     debugPrint(
       '[WebRTC] Creating peer connection for peer $peerId (localStream: ${_localStream != null})',
     );
-    final pc = await createPeerConnection(_iceServers);
+    final pc = await createPeerConnection(
+      await _turnConfiguration() ?? _iceServers,
+    );
     _peerConnections[peerId] = pc;
 
     // Add our local tracks to this peer connection.
@@ -2082,6 +2088,8 @@ class WebRTCCallService extends ChangeNotifier {
 
     try {
       try {
+        final configuration = await _turnConfiguration();
+        if (configuration != null) await pc.setConfiguration(configuration);
         await pc.restartIce();
       } catch (e) {
         debugPrint('[WebRTC] pc.restartIce() call note: $e');

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../config/theme/app_colors.dart';
-import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
 
 import 'package:videocall/features/calls/domain/models/call_log.dart';
@@ -97,7 +96,7 @@ void showCallTypeSelectionDialog(
                   ),
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    _launchDirectCall(
+                    launchDirectCall(
                       context,
                       isVideo: false,
                       recipientUserId: recipientUserId,
@@ -123,7 +122,7 @@ void showCallTypeSelectionDialog(
                   ),
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    _launchDirectCall(
+                    launchDirectCall(
                       context,
                       isVideo: true,
                       recipientUserId: recipientUserId,
@@ -141,18 +140,6 @@ void showCallTypeSelectionDialog(
   );
 }
 
-/// Build a unique room ID per call session from two user IDs.
-/// A timestamp suffix ensures a fresh room is created for every new call,
-/// preventing the second call from reusing a potentially stale room on the backend.
-String _buildRoomId(String userIdA, String userIdB) {
-  final ids = [userIdA, userIdB]..sort();
-  // Short epoch suffix (last 8 digits) makes the room unique per session
-  final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000)
-      .toString()
-      .substring(3); // e.g. "8392481"
-  return 'direct-${ids[0]}-${ids[1]}-$ts';
-}
-
 /// Shared helper: derive initials from name
 String _deriveInitials(String name) {
   final parts = name
@@ -166,17 +153,14 @@ String _deriveInitials(String name) {
 }
 
 /// Shared helper: emit call:invite then navigate to CallPage.
-void _launchDirectCall(
+void launchDirectCall(
   BuildContext context, {
   required bool isVideo,
   required String recipientUserId,
   required String recipientName,
   required String recipientMatricule,
 }) {
-  final authCtrl = context.read<AuthController>();
-  final user = authCtrl.currentUser;
-  final myUserId = user?['id']?.toString() ?? user?['userId']?.toString() ?? '';
-  final roomId = _buildRoomId(myUserId, recipientUserId);
+  final roomId = MeetingLinkService.createRoomId();
 
   // Save outgoing call log
   final log = CallLog(
@@ -231,8 +215,7 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
     super.initState();
     _titleController = TextEditingController(text: 'Group Sync Call');
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
-    _roomId = 'group-$randomCode';
+    _roomId = MeetingLinkService.createRoomId();
     _roomLink = MeetingLinkService.generateMeetingLink(
       roomId: _roomId,
       isVideo: true,
@@ -769,8 +752,7 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
-    _roomId = 'direct-$randomCode';
+    _roomId = MeetingLinkService.createRoomId();
     _directCallLink = MeetingLinkService.generateMeetingLink(
       roomId: _roomId,
       isVideo: true,
@@ -809,7 +791,7 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
       (c) => c.id == _selectedContactId,
     );
     Navigator.pop(context);
-    _launchDirectCall(
+    launchDirectCall(
       context,
       isVideo: isVideo,
       recipientUserId: contact.id,

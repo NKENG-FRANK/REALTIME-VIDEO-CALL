@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -31,8 +32,8 @@ class BackgroundCallService {
   static bool get _isDesktop =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
-       defaultTargetPlatform == TargetPlatform.linux ||
-       defaultTargetPlatform == TargetPlatform.macOS);
+          defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   /// Initialize the background service and notification channels.
   /// Skips desktop platforms — those use [DesktopTrayService] for background
@@ -49,24 +50,29 @@ class BackgroundCallService {
 
     final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-    const AndroidNotificationChannel foregroundChannel = AndroidNotificationChannel(
+    const AndroidNotificationChannel
+    foregroundChannel = AndroidNotificationChannel(
       notificationChannelId,
       'CallWave Background Listener',
-      description: 'Maintains incoming call listener when the app is in the background',
+      description:
+          'Maintains incoming call listener when the app is in the background',
       importance: Importance.low,
     );
 
-    const AndroidNotificationChannel incomingChannel = AndroidNotificationChannel(
-      incomingCallChannelId,
-      'CallWave Incoming Calls',
-      description: 'Incoming video and audio call notifications',
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
-    );
+    const AndroidNotificationChannel incomingChannel =
+        AndroidNotificationChannel(
+          incomingCallChannelId,
+          'CallWave Incoming Calls',
+          description: 'Incoming video and audio call notifications',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+        );
 
     final androidPlugin = flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await androidPlugin?.createNotificationChannel(foregroundChannel);
     await androidPlugin?.createNotificationChannel(incomingChannel);
 
@@ -77,7 +83,8 @@ class BackgroundCallService {
         isForegroundMode: true,
         notificationChannelId: notificationChannelId,
         initialNotificationTitle: 'CallWave is active',
-        initialNotificationContent: 'Listening for incoming calls in background...',
+        initialNotificationContent:
+            'Listening for incoming calls in background...',
         foregroundServiceNotificationId: notificationId,
       ),
       iosConfiguration: IosConfiguration(
@@ -131,7 +138,9 @@ class BackgroundCallService {
           }
         }
       } catch (e) {
-        debugPrint('[BackgroundCallService] checkAndConsumeAcceptedCall error: $e');
+        debugPrint(
+          '[BackgroundCallService] checkAndConsumeAcceptedCall error: $e',
+        );
       }
     }
 
@@ -160,7 +169,9 @@ class BackgroundCallService {
     await prefs.remove(pendingAcceptedCallKey);
     try {
       final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-      await flutterLocalNotificationsPlugin.cancel(id: incomingCallNotificationId);
+      await flutterLocalNotificationsPlugin.cancel(
+        id: incomingCallNotificationId,
+      );
     } catch (_) {}
     try {
       await FlutterCallkitIncoming.endAllCalls();
@@ -187,10 +198,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
   void updateNotification(String title, String content) {
     if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: title,
-        content: content,
-      );
+      service.setForegroundNotificationInfo(title: title, content: content);
     }
   }
 
@@ -234,7 +242,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
     // ── Listen for Incoming Call from backend ──────────────────────────────
     socket!.on('call:incoming', (payload) async {
-      debugPrint('[BackgroundService] Incoming call received: $payload');
+      debugPrint('[BackgroundService] Incoming call received');
       if (payload is! Map) return;
 
       final roomId = payload['roomId']?.toString() ?? '';
@@ -242,8 +250,14 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       final callerName = payload['callerName']?.toString() ?? 'Caller';
       final callerMatricule = payload['callerMatricule']?.toString() ?? '';
       final rawCallType = (payload['callType']?.toString() ?? '').toUpperCase();
-      final isVideoCall = rawCallType.contains('VIDEO') || payload['isVideoCall'] == true || payload['isVideoCall'] == 'true';
-      final isGroupCall = rawCallType.contains('GROUP') || payload['isGroupCall'] == true || payload['isGroupCall'] == 'true';
+      final isVideoCall =
+          rawCallType.contains('VIDEO') ||
+          payload['isVideoCall'] == true ||
+          payload['isVideoCall'] == 'true';
+      final isGroupCall =
+          rawCallType.contains('GROUP') ||
+          payload['isGroupCall'] == true ||
+          payload['isGroupCall'] == 'true';
       final groupTitle = payload['groupTitle']?.toString();
 
       final callData = <String, dynamic>{

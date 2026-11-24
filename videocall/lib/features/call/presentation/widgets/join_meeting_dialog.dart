@@ -79,7 +79,7 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
     }
 
     final parsed = MeetingLinkService.parseInput(rawInput);
-    if (parsed.roomId.isEmpty) {
+    if (!MeetingLinkService.isValidRoomId(parsed.roomId)) {
       setState(() {
         _errorText = 'Invalid meeting link or Room ID';
       });

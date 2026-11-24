@@ -13,6 +13,7 @@ class AuthController extends ChangeNotifier {
   /// user profile map and JWT token. Use this to seed other controllers
   /// (e.g. SettingsController, SignalingService) without creating hard dependencies.
   Function(Map<String, dynamic> user, String token)? onUserLoaded;
+  VoidCallback? onUserSignedOut;
 
   // UI State
   bool _isSignUp = false;
@@ -263,6 +264,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    onUserSignedOut?.call();
     await AuthService.logout();
     await BackgroundCallService.stop();
     _isAuthenticated = false;

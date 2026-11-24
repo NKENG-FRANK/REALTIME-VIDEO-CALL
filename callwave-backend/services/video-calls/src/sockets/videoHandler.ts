@@ -10,16 +10,28 @@ import {
   getRoom,
 } from '../mediasoup/roomManager.js';
 
+const isRoomCapability = (roomId: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(roomId);
+
+const invitationKey = (roomId: string, calleeUserId: string): string =>
+  `video:invitation:${roomId}:${calleeUserId}`;
+
 export function registerVideoHandlers(io: Server, socket: Socket) {
   const userId = socket.data.userId;
 
   // Track which rooms this socket has already left to prevent double-leave
   const leftRooms = new Set<string>();
 
+  function authorizeRoomSocket(roomId: string | undefined, callback?: (res: any) => void): boolean {
+    if (roomId && getRoom(roomId)?.participants.get(userId)?.socketId === socket.id) return true;
+    if (typeof callback === 'function') callback({ status: 'error', message: 'Room access denied' });
+    return false;
+  }
+
   // ─── Call Signaling ─────────────────────────────────────────────────────
 
   /**
-   * Caller emits this BEFORE joining the room.
+  * The caller must already be a room participant on one of their sockets.
    * The backend looks up the callee's live socket from Redis presence and
    * forwards a `call:incoming` event so their app can show the incoming call UI.
    */
@@ -34,7 +46,11 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     }) => {
       try {
         const { calleeUserId, roomId, callType, callerName, callerMatricule } = data;
-        console.log(`[VideoHandler] Received call:invite from ${userId} to ${calleeUserId} (roomId: ${roomId})`);
+        const room = getRoom(roomId);
+        if (!isRoomCapability(roomId) || !room?.participants.has(userId)) {
+          socket.emit('error', { message: 'Call invite is not authorized' });
+          return;
+        }
         const isOnline = await redis.hexists('video:presence', calleeUserId);
 
         if (!isOnline) {
@@ -43,6 +59,9 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        if (!getRoom(roomId)?.participants.has(userId)) return;
+        await redis.set(invitationKey(roomId, calleeUserId), JSON.stringify({ callerUserId: userId, roomInstanceId: room.instanceId }), 'EX', 90);
+        if (getRoom(roomId) !== room || !room.participants.has(userId)) return;
         console.log(`[VideoHandler] Forwarding call:incoming to callee user room ${calleeUserId}`);
         io.to(calleeUserId).emit('call:incoming', {
           roomId,
@@ -64,11 +83,22 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   /**
    * Callee declines — notify the caller that the call was rejected.
    */
-  socket.on('call:decline', async (data: { callerUserId: string; roomId: string }) => {
-    console.log(`[VideoHandler] Callee ${userId} declined call from caller ${data.callerUserId}`);
-    const isOnline = await redis.hexists('video:presence', data.callerUserId);
-    if (isOnline) {
-      io.to(data.callerUserId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
+  socket.on('call:decline', async (data: { callerUserId?: string; roomId: string }) => {
+    try {
+      if (!data || !isRoomCapability(data.roomId)) return;
+      const invitation = await redis.eval(
+        "local value = redis.call('GET', KEYS[1]); if not value then return nil end; local invite = cjson.decode(value); if ARGV[1] ~= '' and invite.callerUserId ~= ARGV[1] then return nil end; redis.call('DEL', KEYS[1]); return value",
+        1,
+        invitationKey(data.roomId, userId),
+        data.callerUserId || ''
+      );
+      if (typeof invitation !== 'string') return;
+      const { callerUserId, roomInstanceId } = JSON.parse(invitation);
+      const room = getRoom(data.roomId);
+      if (!room || room.instanceId !== roomInstanceId || !room.participants.has(callerUserId)) return;
+      io.to(callerUserId).emit('call:declined', { calleeUserId: userId, roomId: data.roomId });
+    } catch (error: any) {
+      console.error('[VideoHandler] Error handling call:decline:', error.message);
     }
   });
 
@@ -77,10 +107,21 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   socket.on('room:join', async (data: { roomId: string; callType: string }, callback?: (res: any) => void) => {
     try {
       const { roomId, callType } = data;
+      if (!isRoomCapability(roomId)) {
+        throw new Error('Invalid room capability');
+      }
       const room = await getOrCreateRoom(roomId);
-      const participant = addParticipant(roomId, userId, socket.id);
+      const previous = room.participants.get(userId);
+      if (previous && previous.socketId !== socket.id) {
+        io.sockets.sockets.get(previous.socketId)?.leave(roomId);
+      }
+      addParticipant(roomId, userId, socket.id);
+      redis.del(invitationKey(roomId, userId)).catch((error) => {
+        console.error('[VideoHandler] Error clearing invitation:', error.message);
+      });
 
       socket.join(roomId);
+      leftRooms.delete(roomId);
 
       const participants = getRoomParticipants(roomId)
         .filter((p) => p.userId !== userId)
@@ -124,7 +165,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     }
   });
 
-  socket.on('disconnect', async () => {
+  socket.on('disconnecting', async () => {
     // Clean up only call rooms (not the userId presence room or socket.id room).
     // Use a snapshot of rooms because socket.rooms will mutate during iteration.
     const roomsSnapshot = Array.from(socket.rooms);
@@ -139,6 +180,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   // ─── WebRTC Transport ────────────────────────────────────────────────────
 
   socket.on('transport:create', async (data: { roomId: string; direction: 'send' | 'recv' }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     try {
       const { roomId, direction } = data;
       const transport = await createWebRtcTransport(roomId, userId, direction);
@@ -172,6 +214,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       data: { roomId: string; transportId: string; dtlsParameters: any; direction: 'send' | 'recv' },
       callback?: (res: any) => void
     ) => {
+      if (!authorizeRoomSocket(data?.roomId, callback)) return;
       try {
         const { roomId, dtlsParameters, direction } = data;
         const room = getRoom(roomId);
@@ -218,6 +261,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       data: { roomId: string; kind: 'audio' | 'video'; rtpParameters: any; appData?: any },
       callback?: (res: any) => void
     ) => {
+      if (!authorizeRoomSocket(data?.roomId, callback)) return;
       try {
         const { roomId, kind, rtpParameters, appData } = data;
         const room = getRoom(roomId);
@@ -265,6 +309,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   );
 
   socket.on('producer:pause', async (data: { roomId: string; producerId: string }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     const { roomId, producerId } = data;
     const room = getRoom(roomId);
     const participant = room?.participants.get(userId);
@@ -279,6 +324,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   });
 
   socket.on('producer:resume', async (data: { roomId: string; producerId: string }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     const { roomId, producerId } = data;
     const room = getRoom(roomId);
     const participant = room?.participants.get(userId);
@@ -300,6 +346,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       data: { roomId: string; producerId: string; producerUserId: string; rtpCapabilities: any },
       callback?: (res: any) => void
     ) => {
+      if (!authorizeRoomSocket(data?.roomId, callback)) return;
       try {
         const { roomId, producerId, producerUserId, rtpCapabilities } = data;
         const room = getRoom(roomId);
@@ -362,6 +409,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   );
 
   socket.on('consumer:resume', async (data: { roomId: string; consumerId: string }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     const { roomId, consumerId } = data;
     const room = getRoom(roomId);
     const consumer = room?.participants.get(userId)?.consumers.get(consumerId);
@@ -374,6 +422,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   });
 
   socket.on('consumer:pause', async (data: { roomId: string; consumerId: string }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     const { roomId, consumerId } = data;
     const room = getRoom(roomId);
     const consumer = room?.participants.get(userId)?.consumers.get(consumerId);
@@ -388,6 +437,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
   // ─── Room Participants ────────────────────────────────────────────────────
 
   socket.on('room:participants', (data: { roomId: string }, callback?: (res: any) => void) => {
+    if (!authorizeRoomSocket(data?.roomId, callback)) return;
     const participants = getRoomParticipants(data.roomId).map((p) => ({
       userId: p.userId,
       producerIds: Array.from(p.producers.keys()),
@@ -414,6 +464,19 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
 
   // ─── WebRTC Direct Peer-to-Peer Signaling ───────────────────────────────────
 
+  function relayToRoom(event: string, data: { roomId: string; to?: string }, payload: Record<string, any>) {
+    const room = getRoom(data.roomId);
+    if (!room || room.participants.get(userId)?.socketId !== socket.id) return;
+
+    if (data.to) {
+      const target = room.participants.get(data.to);
+      if (!target || target.userId === userId) return;
+      io.to(target.socketId).emit(event, payload);
+    } else {
+      socket.to(data.roomId).emit(event, payload);
+    }
+  }
+
   socket.on('webrtc:offer', async (data: { roomId: string; to?: string; sdp: any; isIceRestart?: boolean }) => {
     const payload: Record<string, any> = {
       senderUserId: userId,
@@ -423,12 +486,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
     // Forward optional ICE-restart flag so the remote peer can schedule
     // delayed video restoration correctly (Device B asymmetric reconnect path).
     if (data.isIceRestart) payload.isIceRestart = true;
-    if (data.to) {
-      io.to(data.to).emit('webrtc:offer', payload);
-    }
-    if (data.roomId) {
-      socket.to(data.roomId).emit('webrtc:offer', payload);
-    }
+    relayToRoom('webrtc:offer', data, payload);
   });
 
   socket.on('webrtc:answer', async (data: { roomId: string; to?: string; sdp: any }) => {
@@ -437,12 +495,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       targetUserId: data.to,
       sdp: data.sdp,
     };
-    if (data.to) {
-      io.to(data.to).emit('webrtc:answer', payload);
-    }
-    if (data.roomId) {
-      socket.to(data.roomId).emit('webrtc:answer', payload);
-    }
+    relayToRoom('webrtc:answer', data, payload);
   });
 
   socket.on('webrtc:candidate', async (data: { roomId: string; to?: string; candidate: any }) => {
@@ -451,12 +504,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       targetUserId: data.to,
       candidate: data.candidate,
     };
-    if (data.to) {
-      io.to(data.to).emit('webrtc:candidate', payload);
-    }
-    if (data.roomId) {
-      socket.to(data.roomId).emit('webrtc:candidate', payload);
-    }
+    relayToRoom('webrtc:candidate', data, payload);
   });
 
   socket.on('webrtc:request_keyframe', async (data: { roomId: string; to?: string }) => {
@@ -464,12 +512,7 @@ export function registerVideoHandlers(io: Server, socket: Socket) {
       senderUserId: userId,
       targetUserId: data.to,
     };
-    if (data.to) {
-      io.to(data.to).emit('webrtc:request_keyframe', payload);
-    }
-    if (data.roomId) {
-      socket.to(data.roomId).emit('webrtc:request_keyframe', payload);
-    }
+    relayToRoom('webrtc:request_keyframe', data, payload);
   });
 }
 
@@ -483,6 +526,7 @@ async function leaveRoom(
   durationSeconds?: number,
   status = 'COMPLETED'
 ) {
+  if (getRoom(roomId)?.participants.get(userId)?.socketId !== socket.id) return;
   removeParticipant(roomId, userId);
   socket.leave(roomId);
 

@@ -9,8 +9,7 @@ export interface JwtPayload {
 
 export function generateAccessToken(payload: JwtPayload): string {
   // Access token valid for 7 days in development
-  const secret = (config.app as any).jwtSecret || 'dev-secret-key-change-in-prod';
-  return jwt.sign(payload, secret, { expiresIn: '7d' });
+  return jwt.sign(payload, config.app.jwtSecret, { expiresIn: '7d' });
 }
 
 export function generateRefreshToken(): string {
@@ -18,7 +17,10 @@ export function generateRefreshToken(): string {
   return crypto.randomBytes(40).toString('hex');
 }
 
+export function hashRefreshToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 export function verifyAccessToken(token: string): JwtPayload {
-  const secret = (config.app as any).jwtSecret || 'dev-secret-key-change-in-prod';
-  return jwt.verify(token, secret) as JwtPayload;
+  return jwt.verify(token, config.app.jwtSecret) as JwtPayload;
 }

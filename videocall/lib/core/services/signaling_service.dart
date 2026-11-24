@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
@@ -40,6 +41,10 @@ class IncomingCallData {
 /// - Allow the caller to emit `call:invite` before joining the room.
 /// - Allow the callee to emit `call:decline`.
 class SignalingService extends ChangeNotifier {
+  SignalingService({String? serverUrl})
+    : _serverUrl = serverUrl ?? ApiConfig.videoCallsBaseUrl;
+
+  final String _serverUrl;
   io.Socket? _socket;
   bool _disposed = false;
 
@@ -80,22 +85,22 @@ class SignalingService extends ChangeNotifier {
 
   /// Call this once after a successful login / auth-check, passing the JWT.
   Future<void> connect(String userToken) async {
-    _lastUserToken = userToken;
-
-    // Avoid duplicate connections for the same user
-    if (_socket != null && _socket!.connected) {
+    // Avoid duplicate connections only when the token is unchanged.
+    if (_socket != null && _socket!.connected && _lastUserToken == userToken) {
       debugPrint('[Signaling] Already connected, skipping.');
       return;
     }
+    _lastUserToken = userToken;
 
     // Clean up any stale socket instance
     if (_socket != null) {
-      _socket!.dispose();
+      final previousSocket = _socket!;
       _socket = null;
+      previousSocket.dispose();
     }
 
     _socket = io.io(
-      ApiConfig.videoCallsBaseUrl,
+      _serverUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': userToken})
@@ -123,9 +128,10 @@ class SignalingService extends ChangeNotifier {
 
     // ── Incoming call from another user ─────────────────────────────────
     _socket!.on('call:incoming', (data) {
-      debugPrint('[Signaling] call:incoming → $data');
+      debugPrint('[Signaling] call:incoming');
       final map = data as Map<String, dynamic>;
-      final rawCallType = (map['callType'] as String? ?? 'DIRECT_VIDEO').toUpperCase();
+      final rawCallType = (map['callType'] as String? ?? 'DIRECT_VIDEO')
+          .toUpperCase();
       final isVideo = rawCallType.contains('VIDEO');
       final isGroup = rawCallType.contains('GROUP') || (map['isGroup'] == true);
 
@@ -157,7 +163,7 @@ class SignalingService extends ChangeNotifier {
 
     // ── Caller was declined ──────────────────────────────────────────────
     _socket!.on('call:declined', (data) {
-      debugPrint('[Signaling] Call declined: $data');
+      debugPrint('[Signaling] Call declined');
       _callDeclined = true;
       _safe(notifyListeners);
       Future.delayed(const Duration(seconds: 3), () {
@@ -170,7 +176,7 @@ class SignalingService extends ChangeNotifier {
 
     // ── Call ended or canceled by caller ─────────────────────────────────
     _socket!.on('call:ended', (data) {
-      debugPrint('[Signaling] Call ended: $data');
+      debugPrint('[Signaling] Call ended');
       clearIncomingCall();
     });
 
@@ -183,9 +189,11 @@ class SignalingService extends ChangeNotifier {
 
   /// Disconnect and release the socket (e.g. on logout).
   void disconnect() {
-    _socket?.disconnect();
-    _socket?.dispose();
+    final previousSocket = _socket;
     _socket = null;
+    _lastUserToken = null;
+    previousSocket?.disconnect();
+    previousSocket?.dispose();
     _incomingCall = null;
     _calleeOffline = false;
     if (!_disposed) Future.microtask(notifyListeners);
@@ -224,9 +232,7 @@ class SignalingService extends ChangeNotifier {
       return;
     }
 
-    debugPrint(
-      '[Signaling] Sending call:invite to $calleeUserId for room $roomId',
-    );
+    debugPrint('[Signaling] Sending call:invite to $calleeUserId');
     _socket!.emit('call:invite', {
       'calleeUserId': calleeUserId,
       'roomId': roomId,
@@ -269,7 +275,7 @@ class SignalingService extends ChangeNotifier {
 
     final callType = isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO';
     debugPrint(
-      '[Signaling] Sending group invites to ${calleeUserIds.length} users for room $roomId ($callType)',
+      '[Signaling] Sending group invites to ${calleeUserIds.length} users ($callType)',
     );
 
     for (final calleeId in calleeUserIds) {

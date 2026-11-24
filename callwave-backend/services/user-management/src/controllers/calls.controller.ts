@@ -32,8 +32,9 @@ export async function createCallLog(req: Request, res: Response, next: NextFunct
     const callerId = req.user?.userId;
     const { room_id, call_type, group_title, participantIds } = req.body;
 
-    if (!Array.isArray(participantIds) || participantIds.length === 0) {
-      return res.status(400).json({ error: 'participantIds array is required' });
+    if (!Array.isArray(participantIds) || participantIds.length === 0 ||
+        !participantIds.every((id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))) {
+      return res.status(400).json({ error: 'participantIds must contain valid user IDs' });
     }
 
     const client = await pool.connect();
@@ -47,15 +48,13 @@ export async function createCallLog(req: Request, res: Response, next: NextFunct
       );
       const callId = callRes.rows[0].id;
 
-      const participantValues = participantIds.map((id, index) => {
-        const isCaller = id === callerId;
-        const status = isCaller ? 'JOINED' : 'MISSED'; // Missed initially, updated when they answer
-        return `('${callId}', '${id}', CURRENT_TIMESTAMP, '${status}', ${isCaller})`;
-      }).join(', ');
-
       await client.query(
         `INSERT INTO call_participants (call_id, user_id, joined_at, participant_status, is_read)
-         VALUES ${participantValues}`
+         SELECT $1, participant_id, CURRENT_TIMESTAMP,
+                CASE WHEN participant_id = $3::uuid THEN 'JOINED'::participant_status_enum ELSE 'MISSED'::participant_status_enum END,
+                participant_id = $3::uuid
+         FROM unnest($2::uuid[]) AS participant_id`,
+        [callId, participantIds, callerId]
       );
 
       await client.query('COMMIT');
@@ -81,9 +80,11 @@ export async function updateCallEnd(req: Request, res: Response, next: NextFunct
        SET ended_at = CURRENT_TIMESTAMP,
            duration_seconds = COALESCE($1, duration_seconds),
            call_status = COALESCE($2, call_status)
-       WHERE id = $3
+       WHERE id = $3 AND (caller_id = $4 OR EXISTS (
+         SELECT 1 FROM call_participants WHERE call_id = $3 AND user_id = $4
+       ))
        RETURNING *`,
-      [durationSeconds, callStatus, callId]
+      [durationSeconds, callStatus, callId, req.user?.userId]
     );
 
     if (result.rowCount === 0) {

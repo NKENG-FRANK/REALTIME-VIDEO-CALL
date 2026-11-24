@@ -95,11 +95,20 @@ class _ConnectingPageState extends State<ConnectingPage>
       debugPrint('[ConnectingPage] No auth token found');
     }
 
-    await _callService.joinCallRoom(
+    final joined = await _callService.joinCallRoom(
       widget.roomId,
       isVideoCall: widget.isVideoCall,
       isGroupCall: widget.isGroupCall,
     );
+
+    if (!mounted || _hasNavigatedToCall || _isTerminating) return;
+    if (!joined) {
+      setState(() {
+        _statusTitle = 'Connection failed';
+        _statusSubtitle = 'Could not join the call room';
+      });
+      return;
+    }
 
     // Send call invite to callee
     if (mounted) {
@@ -119,28 +128,24 @@ class _ConnectingPageState extends State<ConnectingPage>
       final signaling = context.read<SignalingService>();
       signaling.resetCallStatus();
 
-      // Brief delay to give socket time to register in room
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (!mounted || _hasNavigatedToCall || _isTerminating) return;
-        if (widget.isGroupCall && widget.recipientUserIds.isNotEmpty) {
-          signaling.sendGroupCallInvites(
-            calleeUserIds: widget.recipientUserIds,
-            roomId: widget.roomId,
-            isVideoCall: widget.isVideoCall,
-            groupTitle: widget.callTitle,
-            callerName: myName,
-            callerMatricule: myMatricule,
-          );
-        } else {
-          signaling.sendCallInvite(
-            calleeUserId: widget.recipientUserId,
-            roomId: widget.roomId,
-            isVideoCall: widget.isVideoCall,
-            callerName: myName,
-            callerMatricule: myMatricule,
-          );
-        }
-      });
+      if (widget.isGroupCall && widget.recipientUserIds.isNotEmpty) {
+        signaling.sendGroupCallInvites(
+          calleeUserIds: widget.recipientUserIds,
+          roomId: widget.roomId,
+          isVideoCall: widget.isVideoCall,
+          groupTitle: widget.callTitle,
+          callerName: myName,
+          callerMatricule: myMatricule,
+        );
+      } else {
+        signaling.sendCallInvite(
+          calleeUserId: widget.recipientUserId,
+          roomId: widget.roomId,
+          isVideoCall: widget.isVideoCall,
+          callerName: myName,
+          callerMatricule: myMatricule,
+        );
+      }
     }
   }
 
@@ -221,6 +226,10 @@ class _ConnectingPageState extends State<ConnectingPage>
       en: 'User offline',
     ),
     'Call Declined' => l10n.text(fr: 'Appel refusé', en: 'Call declined'),
+    'Connection failed' => l10n.text(
+      fr: 'Connexion échouée',
+      en: 'Connection failed',
+    ),
     _ => _statusTitle,
   };
 
@@ -253,6 +262,12 @@ class _ConnectingPageState extends State<ConnectingPage>
       return l10n.text(
         fr: '${widget.recipientName} ne peut pas répondre',
         en: '${widget.recipientName} is unable to answer',
+      );
+    }
+    if (_statusTitle == 'Connection failed') {
+      return l10n.text(
+        fr: 'Impossible de rejoindre la salle d’appel',
+        en: 'Could not join the call room',
       );
     }
     return _statusSubtitle.isNotEmpty

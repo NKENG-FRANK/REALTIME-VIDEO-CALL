@@ -1,6 +1,8 @@
+import 'dart:math';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../config/api_config.dart';
 import '../../config/theme/app_colors.dart';
@@ -20,6 +22,22 @@ class ParsedMeetingLink {
 
 /// Service for generating, parsing, and sharing meeting join links and codes.
 class MeetingLinkService {
+  static final Random _secureRandom = Random.secure();
+
+  static String createRoomId() {
+    final bytes = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  static bool isValidRoomId(String roomId) => RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+  ).hasMatch(roomId);
+
   /// Stores a meeting link targeted by an incoming web URL/deep-link while auth completes.
   static ParsedMeetingLink? pendingJoinLink;
 
@@ -109,10 +127,10 @@ class MeetingLinkService {
   }
 
   /// Parses raw input which can be:
-  /// 1. A full URL (e.g. `https://callwave.cenadi.cm/join?room=group-123&video=false&title=Sync`)
-  /// 2. A web hash URL (e.g. `http://localhost:8080/#/join?room=group-123`)
+  /// 1. A full URL (e.g. `https://callwave.cenadi.cm/join?room=<uuid>&video=false&title=Sync`)
+  /// 2. A web hash URL (e.g. `http://localhost:8080/#/join?room=<uuid>`)
   /// 3. A deep link scheme (e.g. `callwave://join?room=group-123`)
-  /// 4. A raw room code (e.g. `group-1728472910` or `123-456`)
+  /// 4. A raw UUID room code
   static ParsedMeetingLink parseInput(String rawInput) {
     final trimmed = rawInput.trim();
     if (trimmed.isEmpty) {

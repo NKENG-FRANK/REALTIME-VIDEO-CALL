@@ -45,19 +45,21 @@ Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
 io.use(socketAuthMiddleware);
 
 // Handle connections
-io.on('connection', async (socket) => {
+io.on('connection', (socket) => {
   const userId = socket.data.userId;
   console.log(`Video socket connected: ${socket.id}, User: ${userId}`);
 
   // Join a room specific to this user to track all their sockets
   socket.join(userId);
 
-  // Track presence in Redis (Set of sockets + hash lookup)
-  await redis.sadd(`video:presence:${userId}`, socket.id);
-  await redis.hset('video:presence', userId, 'online');
+  const presenceReady = (async () => {
+    await redis.sadd(`video:presence:${userId}`, socket.id);
+    await redis.hset('video:presence', userId, 'online');
+  })();
 
   socket.on('disconnect', async () => {
     console.log(`Video socket disconnected: ${socket.id}, User: ${userId}`);
+    await presenceReady.catch(() => undefined);
     await redis.srem(`video:presence:${userId}`, socket.id);
     const remaining = await redis.scard(`video:presence:${userId}`);
     if (remaining === 0) {
@@ -66,6 +68,10 @@ io.on('connection', async (socket) => {
   });
 
   registerVideoHandlers(io, socket);
+  presenceReady.catch((error) => {
+    console.error(`Failed to register video presence for ${userId}:`, error);
+    socket.disconnect(true);
+  });
 });
 
 // Bootstrap

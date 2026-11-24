@@ -33,7 +33,7 @@ class CallPage extends StatefulWidget {
   const CallPage({
     super.key,
     this.callTitle = '1-on-1 Call',
-    this.roomId = 'demo-room-1',
+    required this.roomId,
     this.userToken,
     this.participantCount = 2,
     this.isVideoCall = true,

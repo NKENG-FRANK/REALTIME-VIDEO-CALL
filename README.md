@@ -198,7 +198,26 @@ In `website/src/App.jsx`, update the VPS health indicator text near the bottom f
    cp .env.example .env
    nano .env
    ```
-   Set `ANNOUNCED_IP` to the VPS's public IP.
+   Set `ANNOUNCED_IP` to the VPS's public IP. Set `JWT_SECRET`, `DB_PASSWORD`,
+   and `RABBITMQ_PASSWORD` to separate random secrets. Use URL-safe characters
+   for `RABBITMQ_PASSWORD` (for example, random hexadecimal). Compose falls back
+   to `DB_PASSWORD` for RabbitMQ only for compatibility with older deployments;
+   do not rely on that fallback in production.
+
+   Existing PostgreSQL and RabbitMQ volumes retain their original passwords:
+   changing `.env` alone does not rotate them. Back up the data, rotate the
+   database role and RabbitMQ user credentials using their administration tools,
+   update `.env` to match, and recreate the dependent services together. Do not
+   delete the volumes to change credentials.
+
+   The current TURN credential is embedded in the client and is not suitable
+   for production. Rotate and migrate TURN to short-lived credentials before
+   exposing the relay to untrusted networks.
+
+   The auth refresh endpoint rotates refresh tokens. Clients using it must save
+   the new `refreshToken` returned with each `accessToken`; the previous token
+   cannot be reused. Existing plaintext refresh tokens are hashed at user
+   service startup without changing the tokens held by clients.
 
 3. **Build and start all services**:
    ```bash
@@ -367,21 +386,26 @@ Open `website/src/App.jsx` and replace the URLs:
 
 Ensure the following inbound ports are open on your VPS firewall (e.g. `ufw` or cloud security group):
 
+The application ports below serve plaintext HTTP/WebSocket by default. In
+production, terminate TLS at a reverse proxy and restrict direct access to those
+ports; do not expose credentials or bearer tokens over plaintext connections.
+
 | Port / Protocol | Service | Description |
 |---|---|---|
 | **3000 / TCP** | User Management API | REST endpoints (Login, Register, Contacts) |
 | **3001 / TCP** | Audio Calls Service | WebSocket signaling for audio |
 | **3002 / TCP** | Video Calls Service | Socket.io signaling & Mediasoup control |
 | **3478 / UDP & TCP** | CoTURN Server | STUN and TURN listening port |
-| **40000–40099 / UDP** | Mediasoup Media | RTC media traffic for SFU video/audio streams |
+| **40000–40099 / UDP & TCP** | Mediasoup Media | RTC media traffic for SFU video/audio streams |
 | **49152–49252 / UDP** | CoTURN Relay | TURN media relay ports for symmetric NAT traversal |
 
-To open these on Ubuntu UFW:
+After configuring a TLS reverse proxy, open its HTTPS port and the media ports on Ubuntu UFW:
 ```bash
-sudo ufw allow 3000:3002/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 3478/tcp
 sudo ufw allow 3478/udp
 sudo ufw allow 40000:40099/udp
+sudo ufw allow 40000:40099/tcp
 sudo ufw allow 49152:49252/udp
 sudo ufw reload
 ```
