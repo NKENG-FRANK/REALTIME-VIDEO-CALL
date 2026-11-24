@@ -4,6 +4,18 @@ A new Flutter project.
 
 ## Getting Started
 
+For an Android device connecting to Docker on the development laptop, connect
+both devices to the same trusted network and run:
+
+```sh
+flutter run --dart-define=SERVER_IP=<laptop-wifi-ip>
+```
+
+Rebuild the app when the laptop's IP address changes. The default mobile
+address is a development fallback and may become stale. The phone must be able
+to reach the laptop's application ports, including TCP 3000 for registration.
+Local HTTP sends credentials unencrypted; use HTTPS for public deployments.
+
 This project is a starting point for a Flutter application.
 
 A few resources to get you started if this is your first Flutter project:

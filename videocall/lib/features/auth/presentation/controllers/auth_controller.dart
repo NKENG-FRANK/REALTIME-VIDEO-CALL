@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/background_call_service.dart';
 
@@ -11,6 +13,7 @@ class AuthController extends ChangeNotifier {
   /// user profile map and JWT token. Use this to seed other controllers
   /// (e.g. SettingsController, SignalingService) without creating hard dependencies.
   Function(Map<String, dynamic> user, String token)? onUserLoaded;
+  VoidCallback? onUserSignedOut;
 
   // UI State
   bool _isSignUp = false;
@@ -25,7 +28,7 @@ class AuthController extends ChangeNotifier {
   String _matricule = '';
   String _password = '';
   String _fullName = '';
-  
+
   Map<String, dynamic>? _currentUser;
 
   AuthController() {
@@ -43,7 +46,9 @@ class AuthController extends ChangeNotifier {
         final updatedProfile = await _authService.validateOrFetchProfile();
         final freshToken = await AuthService.getToken();
 
-        if (freshToken != null && freshToken.isNotEmpty && updatedProfile != null) {
+        if (freshToken != null &&
+            freshToken.isNotEmpty &&
+            updatedProfile != null) {
           _isAuthenticated = true;
           _currentUser = updatedProfile;
           if (_currentUser != null) {
@@ -84,7 +89,6 @@ class AuthController extends ChangeNotifier {
     });
     notifyListeners();
   }
-
 
   String get matricule => _matricule;
   String get password => _password;
@@ -195,7 +199,9 @@ class AuthController extends ChangeNotifier {
   Future<bool> signUp() async {
     _errorMessage = null;
 
-    if (_fullName.trim().isEmpty || _matricule.trim().isEmpty || _password.isEmpty) {
+    if (_fullName.trim().isEmpty ||
+        _matricule.trim().isEmpty ||
+        _password.isEmpty) {
       _errorMessage = 'All fields are required';
       notifyListeners();
       return false;
@@ -219,7 +225,9 @@ class AuthController extends ChangeNotifier {
     try {
       final nameParts = _fullName.trim().split(' ');
       final firstName = nameParts.first;
-      final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : 'User';
+      final lastName = nameParts.length > 1
+          ? nameParts.sublist(1).join(' ')
+          : 'User';
       final username = _matricule.trim().toLowerCase();
 
       final result = await _authService.register(
@@ -255,7 +263,8 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  void signOut() async {
+  Future<void> signOut() async {
+    onUserSignedOut?.call();
     await AuthService.logout();
     await BackgroundCallService.stop();
     _isAuthenticated = false;

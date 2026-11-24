@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/l10n/app_localizations.dart';
 import 'auth_text_field.dart';
@@ -18,7 +19,7 @@ class SignUpForm extends StatelessWidget {
   final bool isLoading;
 
   const SignUpForm({
-    Key? key,
+    super.key,
     required this.fullName,
     required this.matricule,
     required this.password,
@@ -31,7 +32,7 @@ class SignUpForm extends StatelessWidget {
     required this.onSignIn,
     required this.onSignUp,
     required this.isLoading,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -48,12 +49,14 @@ class SignUpForm extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             margin: const EdgeInsets.only(bottom: 18),
             decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
+              color: AppColors.error.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFCA5A5)),
+              border: Border.all(
+                color: AppColors.error.withValues(alpha: 0.25),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFDC2626).withValues(alpha: 0.06),
+                  color: AppColors.error.withValues(alpha: 0.06),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -64,7 +67,7 @@ class SignUpForm extends StatelessWidget {
               children: [
                 const Icon(
                   Icons.error_outline_rounded,
-                  color: Color(0xFFDC2626),
+                  color: AppColors.error,
                   size: 20,
                 ),
                 const SizedBox(width: 10),
@@ -72,7 +75,7 @@ class SignUpForm extends StatelessWidget {
                   child: Text(
                     errorMessage!,
                     style: const TextStyle(
-                      color: Color(0xFF991B1B),
+                      color: AppColors.error,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       height: 1.35,
@@ -98,7 +101,7 @@ class SignUpForm extends StatelessWidget {
         // Matricule Field
         AuthTextField(
           label: l10n.matricule,
-          badgeText: '8 caractères',
+          badgeText: l10n.text(fr: '8 caractères', en: '8 characters'),
           hintText: l10n.matriculeHint,
           prefixIcon: Icons.badge_outlined,
           initialValue: matricule,
@@ -110,7 +113,10 @@ class SignUpForm extends StatelessWidget {
         // Password Field
         AuthTextField(
           label: l10n.password,
-          badgeText: 'Min. 6 car.',
+          badgeText: l10n.text(
+            fr: 'Min. 6 caractères',
+            en: 'Min. 6 characters',
+          ),
           hintText: l10n.passwordPlaceholder,
           prefixIcon: Icons.lock_outline_rounded,
           obscureText: !showPassword,
@@ -123,9 +129,11 @@ class SignUpForm extends StatelessWidget {
                   ? Icons.visibility_off_outlined
                   : Icons.visibility_outlined,
               size: 20,
-              color: const Color(0xFF64748B),
+              color: AppColors.textMuted,
             ),
-            tooltip: showPassword ? l10n.hidePasswordText : l10n.showPasswordText,
+            tooltip: showPassword
+                ? l10n.hidePasswordText
+                : l10n.showPasswordText,
             onPressed: onTogglePassword,
           ),
         ),
@@ -135,9 +143,9 @@ class SignUpForm extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: AppColors.background,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.borderColor),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +153,7 @@ class SignUpForm extends StatelessWidget {
               const Icon(
                 Icons.verified_user_outlined,
                 size: 16,
-                color: Color(0xFF64748B),
+                color: AppColors.textMuted,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -153,7 +161,7 @@ class SignUpForm extends StatelessWidget {
                   l10n.termsAgreement,
                   style: const TextStyle(
                     fontSize: 11,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textMuted,
                     height: 1.35,
                   ),
                 ),
@@ -171,14 +179,11 @@ class SignUpForm extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF134E2B),
-                Color(0xFF1B6E3D),
-              ],
+              colors: [AppColors.primaryLight, AppColors.primaryDark],
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF134E2B).withValues(alpha: 0.35),
+                color: AppColors.primary.withValues(alpha: 0.35),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -195,20 +200,25 @@ class SignUpForm extends StatelessWidget {
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                           strokeWidth: 2.2,
                         ),
                       )
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            l10n.signUp.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
+                          Flexible(
+                            child: Text(
+                              l10n.signUp.toUpperCase(),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -227,14 +237,17 @@ class SignUpForm extends StatelessWidget {
         const SizedBox(height: 22),
 
         // Sign In Switch Prompt
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 6,
           children: [
             Text(
               l10n.alreadyHaveAccount,
+              textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 12,
-                color: Color(0xFF64748B),
+                color: AppColors.textMuted,
                 fontWeight: FontWeight.w500,
               ),
             ),

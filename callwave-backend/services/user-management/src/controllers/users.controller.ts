@@ -112,6 +112,7 @@ export async function searchUsers(req: Request, res: Response, next: NextFunctio
       FROM users u
       LEFT JOIN user_profiles p ON u.id = p.user_id
       WHERE u.status = 'ACTIVE'
+        AND COALESCE(p.is_searchable, TRUE)
     `;
     const params: any[] = [];
 

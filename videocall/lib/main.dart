@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -22,15 +24,14 @@ import 'features/calls/presentation/controllers/calls_controller.dart';
 import 'features/contacts/presentation/controllers/contacts_controller.dart';
 import 'features/settings/presentation/controllers/settings_controller.dart';
 import 'features/auth/presentation/pages/auth_page.dart';
-import 'features/calls/presentation/pages/calls_history_page.dart';
-import 'features/contacts/presentation/pages/contacts_page.dart';
-import 'features/settings/presentation/pages/settings_page.dart';
 import 'features/call/presentation/pages/incoming_call_page.dart';
 import 'features/call/presentation/pages/connecting_page.dart';
 import 'features/call/presentation/pages/call_page.dart';
 import 'features/call/presentation/pages/audio_call_page.dart';
 import 'features/call/presentation/pages/call_ended_page.dart';
+import 'ui/callwave_workspace.dart';
 import 'core/services/desktop_tray_service.dart';
+
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 
@@ -45,9 +46,10 @@ void main() async {
   await BackgroundCallService.initialize();
   await DesktopTrayService().initialize();
 
-  final isMobile = !kIsWeb &&
+  final isMobile =
+      !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
-       defaultTargetPlatform == TargetPlatform.iOS);
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   if (isMobile) {
     try {
@@ -74,14 +76,18 @@ void main() async {
               } else {
                 // Notification body clicked: set pending incoming call to show ring page
                 final prefs = await SharedPreferences.getInstance();
-                await prefs.setString(BackgroundCallService.pendingIncomingCallKey, payload);
+                await prefs.setString(
+                  BackgroundCallService.pendingIncomingCallKey,
+                  payload,
+                );
               }
             } catch (_) {}
           }
         },
       );
 
-      final launchDetails = await notifications.getNotificationAppLaunchDetails();
+      final launchDetails = await notifications
+          .getNotificationAppLaunchDetails();
       if (launchDetails?.didNotificationLaunchApp == true) {
         final response = launchDetails?.notificationResponse;
         if (response?.payload != null && response!.payload!.isNotEmpty) {
@@ -93,7 +99,10 @@ void main() async {
             await BackgroundCallService.clearIncomingNotification();
           } else {
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setString(BackgroundCallService.pendingIncomingCallKey, response.payload!);
+            await prefs.setString(
+              BackgroundCallService.pendingIncomingCallKey,
+              response.payload!,
+            );
           }
         }
       }
@@ -106,7 +115,7 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +143,7 @@ class MyApp extends StatelessWidget {
             // Also start background call listener
             BackgroundCallService.start(token);
           };
+          authCtrl.onUserSignedOut = signalingService.disconnect;
 
           if (authCtrl.isAuthenticated && !signalingService.isConnected) {
             AuthService.getToken().then((token) {
@@ -156,6 +166,12 @@ class MyApp extends StatelessWidget {
               return MaterialApp(
                 title: 'Callwave',
                 theme: AppTheme.lightTheme(),
+                darkTheme: AppTheme.darkTheme(),
+                themeMode: switch (settingsCtrl.settings.theme) {
+                  'Dark' => ThemeMode.dark,
+                  'System' => ThemeMode.system,
+                  _ => ThemeMode.light,
+                },
                 navigatorKey: navigatorKey,
 
                 // ── Localization ─────────────────────────────────────────────
@@ -191,14 +207,18 @@ class MyApp extends StatelessWidget {
                           return MaterialPageRoute(
                             builder: (_) => parsed.isVideo
                                 ? CallPage(
-                                    callTitle: parsed.title ?? 'Meeting ${parsed.roomId}',
+                                    callTitle:
+                                        parsed.title ??
+                                        'Meeting ${parsed.roomId}',
                                     roomId: parsed.roomId,
                                     isVideoCall: true,
                                     isGroupCall: true,
                                     participantCount: 2,
                                   )
                                 : AudioCallPage(
-                                    callTitle: parsed.title ?? 'Meeting ${parsed.roomId}',
+                                    callTitle:
+                                        parsed.title ??
+                                        'Meeting ${parsed.roomId}',
                                     roomId: parsed.roomId,
                                     contactName: parsed.title ?? 'Meeting',
                                     contactMatricule: parsed.roomId,
@@ -208,7 +228,9 @@ class MyApp extends StatelessWidget {
                           );
                         } else {
                           MeetingLinkService.pendingJoinLink = parsed;
-                          return MaterialPageRoute(builder: (_) => const AuthPage());
+                          return MaterialPageRoute(
+                            builder: (_) => const AuthPage(),
+                          );
                         }
                       }
                     }
@@ -217,9 +239,11 @@ class MyApp extends StatelessWidget {
                 },
                 routes: {
                   '/auth': (context) => const AuthPage(),
-                  '/calls': (context) => const CallsHistoryPage(),
-                  '/contacts': (context) => const ContactsPage(),
-                  '/settings': (context) => const SettingsPage(),
+                  '/calls': (context) => const CallwaveWorkspace(),
+                  '/contacts': (context) =>
+                      const CallwaveWorkspace(initialPage: 'people'),
+                  '/settings': (context) =>
+                      const CallwaveWorkspace(initialPage: 'settings'),
                   '/connecting': (context) => const ConnectingPage(),
                   '/call-ended': (context) => const CallEndedPage(),
                 },
@@ -236,8 +260,7 @@ class MyApp extends StatelessWidget {
 /// continuously — ensuring IncomingCallPage appears over any active screen.
 class _GlobalIncomingCallListener extends StatefulWidget {
   final Widget child;
-  const _GlobalIncomingCallListener({Key? key, required this.child})
-    : super(key: key);
+  const _GlobalIncomingCallListener({required this.child});
 
   @override
   State<_GlobalIncomingCallListener> createState() =>
@@ -245,7 +268,8 @@ class _GlobalIncomingCallListener extends StatefulWidget {
 }
 
 class _GlobalIncomingCallListenerState
-    extends State<_GlobalIncomingCallListener> with WidgetsBindingObserver {
+    extends State<_GlobalIncomingCallListener>
+    with WidgetsBindingObserver {
   bool _showingIncomingCall = false;
   StreamSubscription? _callKitSubscription;
 
@@ -297,14 +321,16 @@ class _GlobalIncomingCallListenerState
     }
 
     // 2. Check if user accepted from CallKit while closed
-    final acceptedCall = await BackgroundCallService.checkAndConsumeAcceptedCall();
+    final acceptedCall =
+        await BackgroundCallService.checkAndConsumeAcceptedCall();
     if (acceptedCall != null && mounted) {
       _navigateToCallRoom(acceptedCall);
       return;
     }
 
     // 3. Check if user tapped incoming call notification to open the ring page of the app
-    final incomingCall = await BackgroundCallService.checkAndConsumeIncomingCall();
+    final incomingCall =
+        await BackgroundCallService.checkAndConsumeIncomingCall();
     if (incomingCall != null && mounted) {
       _showIncomingCallFromData(incomingCall);
     }
@@ -319,40 +345,51 @@ class _GlobalIncomingCallListenerState
     final callerUserId = data['callerUserId']?.toString() ?? '';
     final callerMatricule = data['callerMatricule']?.toString() ?? '';
     final rawCallType = (data['callType']?.toString() ?? '').toUpperCase();
-    final isVideoCall = rawCallType.contains('VIDEO') || data['isVideoCall'] == true || data['isVideoCall'] == 'true';
-    final isGroupCall = rawCallType.contains('GROUP') || data['isGroupCall'] == true || data['isGroupCall'] == 'true';
+    final isVideoCall =
+        rawCallType.contains('VIDEO') ||
+        data['isVideoCall'] == true ||
+        data['isVideoCall'] == 'true';
+    final isGroupCall =
+        rawCallType.contains('GROUP') ||
+        data['isGroupCall'] == true ||
+        data['isGroupCall'] == 'true';
     final groupTitle = data['groupTitle']?.toString();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      navigatorKey.currentState?.push(
-        MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (_) => IncomingCallPage(
-            callerName: callerName,
-            callerMatricule: callerMatricule,
-            roomId: roomId,
-            isVideoCall: isVideoCall,
-            isGroupCall: isGroupCall,
-            groupTitle: groupTitle,
-            onAccept: () {
-              BackgroundCallService.clearIncomingNotification();
-              _showingIncomingCall = false;
-              _navigateToCallRoom(data);
-            },
-            onDecline: () {
-              BackgroundCallService.clearIncomingNotification();
-              _showingIncomingCall = false;
-              try {
-                context.read<SignalingService>().declineCall(callerUserId, roomId);
-              } catch (_) {}
-            },
-          ),
-        ),
-      ).then((_) {
-        _showingIncomingCall = false;
-        RingtoneService().stop();
-        BackgroundCallService.clearIncomingNotification();
-      });
+      navigatorKey.currentState
+          ?.push(
+            MaterialPageRoute<void>(
+              fullscreenDialog: true,
+              builder: (_) => IncomingCallPage(
+                callerName: callerName,
+                callerMatricule: callerMatricule,
+                roomId: roomId,
+                isVideoCall: isVideoCall,
+                isGroupCall: isGroupCall,
+                groupTitle: groupTitle,
+                onAccept: () {
+                  BackgroundCallService.clearIncomingNotification();
+                  _showingIncomingCall = false;
+                  _navigateToCallRoom(data);
+                },
+                onDecline: () {
+                  BackgroundCallService.clearIncomingNotification();
+                  _showingIncomingCall = false;
+                  try {
+                    context.read<SignalingService>().declineCall(
+                      callerUserId,
+                      roomId,
+                    );
+                  } catch (_) {}
+                },
+              ),
+            ),
+          )
+          .then((_) {
+            _showingIncomingCall = false;
+            RingtoneService().stop();
+            BackgroundCallService.clearIncomingNotification();
+          });
     });
   }
 
@@ -362,19 +399,29 @@ class _GlobalIncomingCallListenerState
     final callerUserId = data['callerUserId']?.toString() ?? '';
     final callerMatricule = data['callerMatricule']?.toString() ?? '';
     final rawCallType = (data['callType']?.toString() ?? '').toUpperCase();
-    final isVideoCall = rawCallType.contains('VIDEO') || data['isVideoCall'] == true || data['isVideoCall'] == 'true';
-    final isGroupCall = rawCallType.contains('GROUP') || data['isGroupCall'] == true || data['isGroupCall'] == 'true';
+    final isVideoCall =
+        rawCallType.contains('VIDEO') ||
+        data['isVideoCall'] == true ||
+        data['isVideoCall'] == 'true';
+    final isGroupCall =
+        rawCallType.contains('GROUP') ||
+        data['isGroupCall'] == true ||
+        data['isGroupCall'] == 'true';
     final groupTitle = data['groupTitle']?.toString();
 
     if (roomId.isEmpty) return;
 
     // Log call
-    final parts = callerName.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final parts = callerName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     final initials = parts.isEmpty
         ? 'U'
         : (parts.length == 1
-            ? parts[0][0].toUpperCase()
-            : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
+              ? parts[0][0].toUpperCase()
+              : '${parts[0][0]}${parts[1][0]}'.toUpperCase());
     final log = CallLog(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: callerName,
@@ -395,14 +442,18 @@ class _GlobalIncomingCallListenerState
       MaterialPageRoute<void>(
         builder: (_) => isVideoCall
             ? CallPage(
-                callTitle: isGroupCall ? (groupTitle ?? 'Group Video Call') : 'Video Call – $callerName',
+                callTitle: isGroupCall
+                    ? (groupTitle ?? 'Group Video Call')
+                    : 'Video Call – $callerName',
                 roomId: roomId,
                 isVideoCall: true,
                 isGroupCall: isGroupCall,
                 participantCount: 2,
               )
             : AudioCallPage(
-                callTitle: isGroupCall ? (groupTitle ?? 'Group Audio Call') : 'Audio Call – $callerName',
+                callTitle: isGroupCall
+                    ? (groupTitle ?? 'Group Audio Call')
+                    : 'Audio Call – $callerName',
                 roomId: roomId,
                 contactName: callerName,
                 contactMatricule: callerMatricule,
@@ -478,7 +529,8 @@ class _GlobalIncomingCallListenerState
                         builder: (_) => incoming.isVideoCall
                             ? CallPage(
                                 callTitle: incoming.isGroupCall
-                                    ? (incoming.groupTitle ?? 'Group Video Call')
+                                    ? (incoming.groupTitle ??
+                                          'Group Video Call')
                                     : 'Video Call – ${incoming.callerName}',
                                 roomId: incoming.roomId,
                                 isVideoCall: true,
@@ -489,7 +541,8 @@ class _GlobalIncomingCallListenerState
                               )
                             : AudioCallPage(
                                 callTitle: incoming.isGroupCall
-                                    ? (incoming.groupTitle ?? 'Group Audio Call')
+                                    ? (incoming.groupTitle ??
+                                          'Group Audio Call')
                                     : 'Audio Call – ${incoming.callerName}',
                                 roomId: incoming.roomId,
                                 contactName: incoming.callerName,
@@ -541,7 +594,7 @@ class _GlobalIncomingCallListenerState
               _showingIncomingCall = false;
               RingtoneService().stop();
               BackgroundCallService.clearIncomingNotification();
-              if (mounted) {
+              if (context.mounted) {
                 context.read<SignalingService>().clearIncomingCall();
               }
             });
@@ -553,11 +606,11 @@ class _GlobalIncomingCallListenerState
 }
 
 /// Automatically resolves startup navigation based on stored JWT validity:
-/// - If token is active & valid: automatically opens CallsHistoryPage.
+/// - If token is active & valid: automatically opens the Calls workspace.
 /// - If token is missing/expired: opens AuthPage.
 /// - While validating: displays the Callwave splash screen with splach.png.
 class _AppAuthResolver extends StatefulWidget {
-  const _AppAuthResolver({Key? key}) : super(key: key);
+  const _AppAuthResolver();
 
   @override
   State<_AppAuthResolver> createState() => _AppAuthResolverState();
@@ -572,7 +625,9 @@ class _AppAuthResolverState extends State<_AppAuthResolver> {
     super.initState();
     // On Windows or Linux, ensure splash screen is shown for at least 5 seconds
     final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux);
-    final duration = isDesktop ? const Duration(seconds: 5) : const Duration(milliseconds: 1500);
+    final duration = isDesktop
+        ? const Duration(seconds: 5)
+        : const Duration(milliseconds: 1500);
 
     _splashTimer = Timer(duration, () {
       if (mounted) {
@@ -605,7 +660,10 @@ class _AppAuthResolverState extends State<_AppAuthResolver> {
               children: [
                 const Spacer(flex: 3),
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520, maxHeight: 220),
+                  constraints: const BoxConstraints(
+                    maxWidth: 520,
+                    maxHeight: 220,
+                  ),
                   child: Image.asset(
                     'assets/logo/splach.png',
                     fit: BoxFit.contain,
@@ -617,7 +675,9 @@ class _AppAuthResolverState extends State<_AppAuthResolver> {
                   height: 28,
                   child: CircularProgressIndicator(
                     strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColors.primary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -664,7 +724,7 @@ class _AppAuthResolverState extends State<_AppAuthResolver> {
                 participantCount: 2,
               );
       }
-      return const CallsHistoryPage();
+      return const CallwaveWorkspace();
     } else {
       return const AuthPage();
     }

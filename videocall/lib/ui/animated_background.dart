@@ -6,7 +6,7 @@ import 'package:videocall/config/theme/app_colors.dart';
 /// with a transparent container (you can later replace it with actual
 /// animations or gradients).
 class AnimatedBackground extends StatelessWidget {
-  const AnimatedBackground({Key? key}) : super(key: key);
+  const AnimatedBackground({super.key});
 
   @override
   Widget build(BuildContext context) {

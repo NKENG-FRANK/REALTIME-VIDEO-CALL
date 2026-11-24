@@ -5,6 +5,7 @@ dotenv.config();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url().optional(),
@@ -25,7 +26,12 @@ if (!parsed.success) {
 const values = parsed.data;
 
 export const config = {
-  app: { env: values.NODE_ENV, host: values.HOST, port: values.PORT },
+  app: {
+    env: values.NODE_ENV,
+    host: values.HOST,
+    port: values.PORT,
+    jwtSecret: values.JWT_SECRET,
+  },
   database: {
     url: values.DATABASE_URL,
     host: values.DB_HOST,

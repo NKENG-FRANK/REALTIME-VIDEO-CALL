@@ -42,7 +42,7 @@ export async function initWorkerPool() {
     const worker = await mediasoup.createWorker({
       logLevel: 'warn',
       rtcMinPort: 40000,
-      rtcMaxPort: 49999,
+      rtcMaxPort: 40099,
     });
 
     worker.on('died', () => {
@@ -61,7 +61,7 @@ async function createWorker(index: number) {
   const worker = await mediasoup.createWorker({
     logLevel: 'warn',
     rtcMinPort: 40000,
-    rtcMaxPort: 49999,
+    rtcMaxPort: 40099,
   });
   workers[index] = worker;
   return worker;

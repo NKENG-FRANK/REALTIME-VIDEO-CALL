@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
 
 class ApiConfig {
-  // Network host of the machine running the backend services (VPS default)
-  static const String _configuredHost = String.fromEnvironment('SERVER_IP', defaultValue: '144.91.89.100');
-  static const bool isSecure = bool.fromEnvironment('IS_SECURE', defaultValue: false);
+  // Network host of the machine running the backend services
+  static const String _configuredHost = String.fromEnvironment('SERVER_IP');
+  static const bool isSecure = bool.fromEnvironment(
+    'IS_SECURE',
+    defaultValue: false,
+  );
 
-  // Fallback LAN IP of the current development machine
+  // Fallback LAN / VPS IP when SERVER_IP is not passed via --dart-define
   static const String defaultLanIp = '144.91.89.100';
 
   static String get host {
@@ -28,16 +31,16 @@ class ApiConfig {
 
   static bool get _useSecure => kIsWeb
       ? (Uri.base.scheme.startsWith('https') ||
-          (!Uri.base.host.contains('192.168.') &&
-              !Uri.base.host.contains('10.') &&
-              Uri.base.host != 'localhost' &&
-              Uri.base.host != '127.0.0.1' &&
-              !kDebugMode))
+            (!Uri.base.host.contains('192.168.') &&
+                !Uri.base.host.contains('10.') &&
+                Uri.base.host != 'localhost' &&
+                Uri.base.host != '127.0.0.1' &&
+                !kDebugMode))
       : (isSecure &&
-          !host.contains('192.168.') &&
-          !host.contains('10.') &&
-          host != 'localhost' &&
-          host != '127.0.0.1');
+            !host.contains('192.168.') &&
+            !host.contains('10.') &&
+            host != 'localhost' &&
+            host != '127.0.0.1');
 
   static String get httpScheme => _useSecure ? 'https' : 'http';
   static String get wsScheme => _useSecure ? 'wss' : 'ws';

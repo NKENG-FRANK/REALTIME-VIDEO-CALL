@@ -115,13 +115,15 @@ Locate the `video-calls` and `coturn` services:
       - --log-file=stdout
       - --listening-port=3478
       - --fingerprint
-      - --lt-cred-mech
-      - --realm=YOUR_SERVER_PUBLIC_IP        # <-- Update this
-      - --user=callwave:callwave_secret
-      - --external-ip=YOUR_SERVER_PUBLIC_IP  # <-- Update this
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET in callwave-backend/.env}
+      - --realm=${ANNOUNCED_IP:-YOUR_SERVER_PUBLIC_IP}
+      - --external-ip=${ANNOUNCED_IP:-YOUR_SERVER_PUBLIC_IP}
       - --min-port=49152
       - --max-port=49252
       - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
 ```
 
 ---
@@ -129,11 +131,10 @@ Locate the `video-calls` and `coturn` services:
 ### Step 3.2: Frontend (Flutter Client) Configuration
 
 #### 1. In `videocall/lib/config/api_config.dart`:
-Update `_configuredHost` and `defaultLanIp`:
+Pass `--dart-define=SERVER_IP=YOUR_SERVER_PUBLIC_IP` at build/run time, or update `defaultLanIp` for mobile builds:
 ```dart
 class ApiConfig {
-  // Set to your VPS public IP address or your custom domain (e.g., 'callwave.example.com')
-  static const String _configuredHost = String.fromEnvironment('SERVER_IP', defaultValue: 'YOUR_SERVER_PUBLIC_IP');
+  static const String _configuredHost = String.fromEnvironment('SERVER_IP');
   static const bool isSecure = bool.fromEnvironment('IS_SECURE', defaultValue: false);
 
   static const String defaultLanIp = 'YOUR_SERVER_PUBLIC_IP';
@@ -142,27 +143,8 @@ class ApiConfig {
 ```
 > **Tip**: If you are using HTTPS with an SSL domain (e.g. `api.yourdomain.com`), set `isSecure = true` or pass `--dart-define=IS_SECURE=true` at build time.
 
-#### 2. In `videocall/lib/core/services/webrtc_call_service.dart`:
-Update the STUN/TURN server URLs in the `_iceServers` map (lines 155–175):
-```dart
-  static const Map<String, dynamic> _iceServers = {
-    'iceServers': [
-      // Primary STUN servers
-      {'urls': 'stun:YOUR_SERVER_PUBLIC_IP:3478'},
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-      // Primary CoTURN Server (UDP and TCP)
-      {
-        'urls': [
-          'turn:YOUR_SERVER_PUBLIC_IP:3478?transport=udp',
-          'turn:YOUR_SERVER_PUBLIC_IP:3478?transport=tcp',
-        ],
-        'username': 'callwave',
-        'credential': 'callwave_secret',
-      },
-    ],
-  };
-```
+#### 2. Short-Lived TURN Credentials:
+The Flutter client automatically requests ephemeral HMAC-signed TURN credentials from `GET /api/v1/video/turn-credentials` via `TurnCredentialsService` using the authenticated user's JWT, so no TURN credentials are embedded in client code.
 
 ---
 
@@ -198,7 +180,26 @@ In `website/src/App.jsx`, update the VPS health indicator text near the bottom f
    cp .env.example .env
    nano .env
    ```
-   Set `ANNOUNCED_IP` to the VPS's public IP.
+   Set `ANNOUNCED_IP` to the VPS's public IP. Set `JWT_SECRET`, `DB_PASSWORD`,
+   and `RABBITMQ_PASSWORD` to separate random secrets. Use URL-safe characters
+   for `RABBITMQ_PASSWORD` (for example, random hexadecimal). Compose falls back
+   to `DB_PASSWORD` for RabbitMQ only for compatibility with older deployments;
+   do not rely on that fallback in production.
+
+   Existing PostgreSQL and RabbitMQ volumes retain their original passwords:
+   changing `.env` alone does not rotate them. Back up the data, rotate the
+   database role and RabbitMQ user credentials using their administration tools,
+   update `.env` to match, and recreate the dependent services together. Do not
+   delete the volumes to change credentials.
+
+   The `video-calls` and `coturn` services use `TURN_SHARED_SECRET` (at least
+   32 random characters) and `TURN_URLS` to issue short-lived HMAC TURN
+   credentials to authenticated clients.
+
+   The auth refresh endpoint rotates refresh tokens. Clients using it must save
+   the new `refreshToken` returned with each `accessToken`; the previous token
+   cannot be reused. Existing plaintext refresh tokens are hashed at user
+   service startup without changing the tokens held by clients.
 
 3. **Build and start all services**:
    ```bash
@@ -367,21 +368,26 @@ Open `website/src/App.jsx` and replace the URLs:
 
 Ensure the following inbound ports are open on your VPS firewall (e.g. `ufw` or cloud security group):
 
+The application ports below serve plaintext HTTP/WebSocket by default. In
+production, terminate TLS at a reverse proxy and restrict direct access to those
+ports; do not expose credentials or bearer tokens over plaintext connections.
+
 | Port / Protocol | Service | Description |
 |---|---|---|
 | **3000 / TCP** | User Management API | REST endpoints (Login, Register, Contacts) |
 | **3001 / TCP** | Audio Calls Service | WebSocket signaling for audio |
 | **3002 / TCP** | Video Calls Service | Socket.io signaling & Mediasoup control |
 | **3478 / UDP & TCP** | CoTURN Server | STUN and TURN listening port |
-| **40000–40099 / UDP** | Mediasoup Media | RTC media traffic for SFU video/audio streams |
+| **40000–40099 / UDP & TCP** | Mediasoup Media | RTC media traffic for SFU video/audio streams |
 | **49152–49252 / UDP** | CoTURN Relay | TURN media relay ports for symmetric NAT traversal |
 
-To open these on Ubuntu UFW:
+After configuring a TLS reverse proxy, open its HTTPS port and the media ports on Ubuntu UFW:
 ```bash
-sudo ufw allow 3000:3002/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 3478/tcp
 sudo ufw allow 3478/udp
 sudo ufw allow 40000:40099/udp
+sudo ufw allow 40000:40099/tcp
 sudo ufw allow 49152:49252/udp
 sudo ufw reload
 ```

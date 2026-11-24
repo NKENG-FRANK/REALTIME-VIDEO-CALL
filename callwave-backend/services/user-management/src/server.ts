@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'node:http';
 import { config } from '@callwave/config';
+import { pool } from '@callwave/database';
 import { errorHandler } from './middlewares/error.js';
 import authRoutes from './routes/auth.routes.js';
 import usersRoutes from './routes/users.routes.js';
@@ -35,8 +36,20 @@ app.use(errorHandler);
 
 const server = createServer(app);
 
-server.listen(port, config.app.host, () => {
-  console.log(`${service} listening on ${config.app.host}:${port}`);
+async function bootstrap() {
+  await pool.query(
+    `UPDATE user_sessions
+     SET refresh_token_hash = encode(sha256(convert_to(refresh_token_hash, 'UTF8')), 'hex')
+     WHERE refresh_token_hash ~ '^[0-9a-f]{80}$'`
+  );
+  server.listen(port, config.app.host, () => {
+    console.log(`${service} listening on ${config.app.host}:${port}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error('Failed to start user-management:', error);
+  process.exit(1);
 });
 
 process.on('SIGTERM', () => server.close());

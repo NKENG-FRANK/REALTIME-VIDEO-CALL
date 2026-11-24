@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/services/webrtc_call_service.dart';
 import 'signal_indicator.dart';
@@ -34,28 +35,24 @@ class ParticipantCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isSpeaking
-            ? const Color(0xFFECFDF5)
-            : Colors.white.withValues(alpha: 0.82),
+        color: isSpeaking ? const Color(0xFF133C2B) : const Color(0xCC13231A),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSpeaking
-              ? const Color(0xFF10B981)
-              : (isPoor
-                  ? const Color(0xFFFCA5A5)
-                  : const Color(0xFFE0EAE2).withValues(alpha: 0.6)),
+              ? AppColors.signalExcellent
+              : (isPoor ? AppColors.error : const Color(0x1FFFFFFF)),
           width: isSpeaking ? 1.5 : 1.0,
         ),
         boxShadow: [
           if (isSpeaking)
             BoxShadow(
-              color: const Color(0xFF10B981).withValues(alpha: 0.2),
+              color: AppColors.signalExcellent.withValues(alpha: 0.2),
               blurRadius: 10,
               offset: const Offset(0, 2),
             )
           else
             const BoxShadow(
-              color: Color(0x08000000),
+              color: Color(0x26000000),
               blurRadius: 12,
               offset: Offset(0, 4),
             ),
@@ -74,12 +71,12 @@ class ParticipantCard extends StatelessWidget {
               color: avatarColor,
               shape: BoxShape.circle,
               border: isSpeaking
-                  ? Border.all(color: const Color(0xFF10B981), width: 2.5)
+                  ? Border.all(color: AppColors.signalExcellent, width: 2.5)
                   : null,
               boxShadow: isSpeaking
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                        color: AppColors.signalExcellent.withValues(alpha: 0.4),
                         blurRadius: 8,
                         spreadRadius: 1,
                       ),
@@ -105,8 +102,8 @@ class ParticipantCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isSpeaking
-                        ? const Color(0xFF065F46)
-                        : AppColors.textMuted.withValues(alpha: 0.7),
+                        ? AppColors.signalExcellent
+                        : const Color(0xFF8DA69A),
                     fontSize: 10,
                     fontWeight: isSpeaking ? FontWeight.w800 : FontWeight.w600,
                   ),
@@ -136,11 +133,17 @@ class ParticipantCard extends StatelessWidget {
                       ? 'Poor network (Loss: ${networkQuality!.packetLossPercent}%, RTT: ${networkQuality!.rttMs.toStringAsFixed(0)}ms)'
                       : 'Poor network connection',
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFFEF4444), width: 0.8),
+                      border: Border.all(
+                        color: const Color(0xFFEF4444),
+                        width: 0.8,
+                      ),
                     ),
                     child: const Text(
                       'POOR',

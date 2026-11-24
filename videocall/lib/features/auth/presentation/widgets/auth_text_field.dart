@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
 
 class AuthTextField extends StatefulWidget {
@@ -14,7 +15,7 @@ class AuthTextField extends StatefulWidget {
   final VoidCallback? onSubmitted;
 
   const AuthTextField({
-    Key? key,
+    super.key,
     required this.label,
     this.badgeText,
     required this.hintText,
@@ -25,7 +26,7 @@ class AuthTextField extends StatefulWidget {
     required this.onChanged,
     this.initialValue = '',
     this.onSubmitted,
-  }) : super(key: key);
+  });
 
   @override
   State<AuthTextField> createState() => _AuthTextFieldState();
@@ -72,15 +73,18 @@ class _AuthTextFieldState extends State<AuthTextField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Label + optional badge
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 6,
           children: [
             Text(
               widget.label,
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF1E293B),
+                color: AppColors.textPrimary,
                 letterSpacing: 0.1,
               ),
             ),
@@ -112,10 +116,8 @@ class _AuthTextFieldState extends State<AuthTextField> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: _isFocused
-                  ? primaryColor
-                  : const Color(0xFFE2E8F0),
-              width: _isFocused ? 1.8 : 1.2,
+              color: _isFocused ? primaryColor : AppColors.borderColor,
+              width: _isFocused ? 1.5 : 1,
             ),
             boxShadow: [
               if (_isFocused)
@@ -126,9 +128,9 @@ class _AuthTextFieldState extends State<AuthTextField> {
                 )
               else
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  color: AppColors.shadowColor,
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
             ],
           ),
@@ -142,7 +144,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
             cursorColor: primaryColor,
             decoration: InputDecoration(
@@ -160,7 +162,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
                 child: Icon(
                   widget.prefixIcon,
                   size: 20,
-                  color: _isFocused ? primaryColor : const Color(0xFF94A3B8),
+                  color: _isFocused ? primaryColor : AppColors.textMuted,
                 ),
               ),
               prefixIconConstraints: const BoxConstraints(
@@ -174,7 +176,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
               ),
               hintText: widget.hintText,
               hintStyle: const TextStyle(
-                color: Color(0xFF94A3B8),
+                color: AppColors.textMuted,
                 fontSize: 13,
                 fontWeight: FontWeight.w400,
               ),

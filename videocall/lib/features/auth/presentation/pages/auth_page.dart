@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/services/meeting_link_service.dart';
@@ -10,10 +11,9 @@ import '../controllers/auth_controller.dart';
 import '../widgets/segmented_auth_switch.dart';
 import '../widgets/sign_in_form.dart';
 import '../widgets/sign_up_form.dart';
-import '../widgets/welcome_panel.dart';
 
 class AuthPage extends StatelessWidget {
-  const AuthPage({Key? key}) : super(key: key);
+  const AuthPage({super.key});
 
   /// Navigate to call or calls history after successful auth
   void _navigateAfterAuth(BuildContext context) {
@@ -44,7 +44,8 @@ class AuthPage extends StatelessWidget {
     Navigator.of(context).pushReplacementNamed('/calls');
   }
 
-  Widget _buildPendingJoinBanner() {
+  Widget _buildPendingJoinBanner(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final pending = MeetingLinkService.pendingJoinLink;
     if (pending == null || pending.roomId.isEmpty) {
       return const SizedBox.shrink();
@@ -70,7 +71,7 @@ class AuthPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Join Meeting: ${pending.title ?? pending.roomId}',
+                  '${l10n.join}: ${pending.title ?? pending.roomId}',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -79,8 +80,11 @@ class AuthPage extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Sign in or register to join immediately',
+                Text(
+                  l10n.text(
+                    fr: 'Connectez-vous ou créez un compte pour rejoindre la réunion.',
+                    en: 'Sign in or register to join the meeting.',
+                  ),
                   style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                 ),
               ],
@@ -103,7 +107,7 @@ class AuthPage extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: AppColors.background,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -133,147 +137,282 @@ class AuthPage extends StatelessWidget {
     AuthController authController,
   ) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 28),
       child: Center(
-        child: Container(
-          width: 960,
-          height: 610,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 40,
-                offset: const Offset(0, 16),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Row(
-            children: [
-              // Left Showcase Panel
-              Expanded(
-                flex: 9,
-                child: WelcomePanel(
-                  isSignUp: authController.isSignUp,
-                  onSignInTap: () => authController.toggleAuthMode(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: Container(
+            height: 660,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.shadowColor,
+                  blurRadius: 42,
+                  offset: const Offset(0, 18),
                 ),
-              ),
-
-              // Right Form Container
-              Expanded(
-                flex: 11,
-                child: Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 46, vertical: 36),
-                  child: Center(
-                    child: SingleChildScrollView(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 380),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildPendingJoinBanner(),
-
-                            // Segmented Switcher
-                            SegmentedAuthSwitch(
-                              isSignUp: authController.isSignUp,
-                              onModeChanged: (_) => authController.toggleAuthMode(),
-                            ),
-                            const SizedBox(height: 24),
-
-                            // Form with smooth animated transition
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
-                              transitionBuilder: (child, animation) {
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: child,
-                                );
-                              },
-                              child: authController.isSignUp
-                                  ? SignUpForm(
-                                      key: const ValueKey('desktop-signup'),
-                                      fullName: authController.fullName,
-                                      matricule: authController.matricule,
-                                      password: authController.password,
-                                      showPassword: authController.showPassword,
-                                      errorMessage: authController.errorMessage,
-                                      onFullNameChanged: authController.updateFullName,
-                                      onMatriculeChanged: authController.updateMatricule,
-                                      onPasswordChanged: authController.updatePassword,
-                                      onTogglePassword: authController.togglePasswordVisibility,
-                                      onSignIn: () => authController.toggleAuthMode(),
-                                      onSignUp: () async {
-                                        final success = await authController.signUp();
-                                        if (success && context.mounted) {
-                                          _navigateAfterAuth(context);
-                                        }
-                                      },
-                                      isLoading: authController.isLoading,
-                                    )
-                                  : SignInForm(
-                                      key: const ValueKey('desktop-signin'),
-                                      matricule: authController.matricule,
-                                      password: authController.password,
-                                      showPassword: authController.showPassword,
-                                      rememberMe: authController.rememberMe,
-                                      errorMessage: authController.errorMessage,
-                                      onMatriculeChanged: authController.updateMatricule,
-                                      onPasswordChanged: authController.updatePassword,
-                                      onTogglePassword: authController.togglePasswordVisibility,
-                                      onToggleRememberMe: authController.toggleRememberMe,
-                                      onSignUp: () => authController.toggleAuthMode(),
-                                      onSignIn: () async {
-                                        final success = await authController.signIn();
-                                        if (success && context.mounted) {
-                                          _navigateAfterAuth(context);
-                                        }
-                                      },
-                                      isLoading: authController.isLoading,
-                                    ),
-                            ),
-                            const SizedBox(height: 20),
-
-                            // Footer security badge
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.lock_outline_rounded,
-                                  size: 13,
-                                  color: Color(0xFF94A3B8),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  AppLocalizations.of(context).officialSecurityTag,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF94A3B8),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: _buildBrandPanel(context)),
+                Expanded(
+                  flex: 6,
+                  child: Container(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 40,
+                    ),
+                    child: Center(
+                      child: SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 400),
+                          child: _buildFormContent(context, authController),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBrandPanel(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Container(
+      padding: const EdgeInsets.all(48),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF27B576), Color(0xFF117A4D)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+            ),
+            child: Image.asset('assets/logo/logo.png', fit: BoxFit.contain),
+          ),
+          const Spacer(),
+          const Text(
+            'Callwave',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 40,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            l10n.text(
+              fr: 'Vos conversations,\nplus proches et plus claires.',
+              en: 'Your conversations,\ncloser and clearer.',
+            ),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 27,
+              height: 1.18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            l10n.text(
+              fr: 'Des appels audio et vidéo privés pour les personnes et les équipes qui comptent.',
+              en: 'Private voice and video calls for the people and teams that matter.',
+            ),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.82),
+              fontSize: 15,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _brandFeature(
+                Icons.hub_outlined,
+                l10n.text(fr: 'Hébergement privé', en: 'Private hosting'),
+              ),
+              _brandFeature(
+                Icons.graphic_eq_rounded,
+                l10n.text(fr: 'Voix claire', en: 'Clear voice'),
+              ),
+              _brandFeature(
+                Icons.videocam_outlined,
+                l10n.text(fr: 'Vidéo HD', en: 'HD video'),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              const Icon(
+                Icons.lock_outline_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLocalizations.of(context).officialSecurityTag,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _brandFeature(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormContent(
+    BuildContext context,
+    AuthController authController, {
+    bool mobile = false,
+  }) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildPendingJoinBanner(context),
+        Text(
+          authController.isSignUp
+              ? l10n.createAccountTitle
+              : mobile
+              ? l10n.signIn
+              : l10n.welcomeTitle,
+          style: TextStyle(
+            fontSize: mobile ? 24 : 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        if (!mobile) ...[
+          const SizedBox(height: 6),
+          Text(
+            authController.isSignUp
+                ? l10n.text(
+                    fr: 'Créez votre compte Callwave pour commencer.',
+                    en: 'Set up your Callwave account to get started.',
+                  )
+                : l10n.text(
+                    fr: 'Connectez-vous pour reprendre là où vous en étiez.',
+                    en: 'Sign in to pick up where you left off.',
+                  ),
+            style: const TextStyle(fontSize: 14, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 24),
+          SegmentedAuthSwitch(
+            isSignUp: authController.isSignUp,
+            onModeChanged: (_) => authController.toggleAuthMode(),
+          ),
+          const SizedBox(height: 22),
+        ] else
+          const SizedBox(height: 18),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          child: authController.isSignUp
+              ? SignUpForm(
+                  key: const ValueKey('signup-form'),
+                  fullName: authController.fullName,
+                  matricule: authController.matricule,
+                  password: authController.password,
+                  showPassword: authController.showPassword,
+                  errorMessage: authController.errorMessage,
+                  onFullNameChanged: authController.updateFullName,
+                  onMatriculeChanged: authController.updateMatricule,
+                  onPasswordChanged: authController.updatePassword,
+                  onTogglePassword: authController.togglePasswordVisibility,
+                  onSignIn: authController.toggleAuthMode,
+                  onSignUp: () async {
+                    final success = await authController.signUp();
+                    if (success && context.mounted) _navigateAfterAuth(context);
+                  },
+                  isLoading: authController.isLoading,
+                )
+              : SignInForm(
+                  key: const ValueKey('signin-form'),
+                  matricule: authController.matricule,
+                  password: authController.password,
+                  showPassword: authController.showPassword,
+                  rememberMe: authController.rememberMe,
+                  errorMessage: authController.errorMessage,
+                  onMatriculeChanged: authController.updateMatricule,
+                  onPasswordChanged: authController.updatePassword,
+                  onTogglePassword: authController.togglePasswordVisibility,
+                  onToggleRememberMe: authController.toggleRememberMe,
+                  onSignUp: authController.toggleAuthMode,
+                  onSignIn: () async {
+                    final success = await authController.signIn();
+                    if (success && context.mounted) _navigateAfterAuth(context);
+                  },
+                  isLoading: authController.isLoading,
+                ),
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: Text(
+            l10n.officialSecurityTag,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+        ),
+      ],
     );
   }
 
@@ -283,205 +422,96 @@ class AuthPage extends StatelessWidget {
     AuthController authController,
   ) {
     final l10n = AppLocalizations.of(context);
-
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-
-              // Top Brand Header with Logo & Institutional Badge
-              Container(
-                width: 64,
-                height: 64,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                    width: 1.2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final preferredHeight = authController.isSignUp ? 176.0 : 236.0;
+        final headerHeight = preferredHeight
+            .clamp(0, constraints.maxHeight * 0.34)
+            .toDouble();
+        return Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: headerHeight + 40,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 36),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF22B573), Color(0xFF0E6B4A)],
                   ),
                 ),
-                child: Image.asset(
-                  'assets/logo/logo.png',
-                  fit: BoxFit.contain,
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              const Text(
-                'Callwave',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 6),
-
-              // Institutional verified badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF134E2B).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF134E2B).withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF16A34A),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'CENADI • RÉPUBLIQUE DU CAMEROUN',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF134E2B),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-
-              // Main Auth Card
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 28,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(22, 22, 22, 24),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildPendingJoinBanner(),
-
-                    // Segmented Pill Switcher
-                    SegmentedAuthSwitch(
-                      isSignUp: authController.isSignUp,
-                      onModeChanged: (_) => authController.toggleAuthMode(),
-                    ),
-                    const SizedBox(height: 22),
-
-                    // Forms with smooth animated transition
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 280),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: child,
-                        );
-                      },
-                      child: authController.isSignUp
-                          ? SignUpForm(
-                              key: const ValueKey('mobile-signup'),
-                              fullName: authController.fullName,
-                              matricule: authController.matricule,
-                              password: authController.password,
-                              showPassword: authController.showPassword,
-                              errorMessage: authController.errorMessage,
-                              onFullNameChanged: authController.updateFullName,
-                              onMatriculeChanged: authController.updateMatricule,
-                              onPasswordChanged: authController.updatePassword,
-                              onTogglePassword: authController.togglePasswordVisibility,
-                              onSignIn: () => authController.toggleAuthMode(),
-                              onSignUp: () async {
-                                final success = await authController.signUp();
-                                if (success && context.mounted) {
-                                  _navigateAfterAuth(context);
-                                }
-                              },
-                              isLoading: authController.isLoading,
-                            )
-                          : SignInForm(
-                              key: const ValueKey('mobile-signin'),
-                              matricule: authController.matricule,
-                              password: authController.password,
-                              showPassword: authController.showPassword,
-                              rememberMe: authController.rememberMe,
-                              errorMessage: authController.errorMessage,
-                              onMatriculeChanged: authController.updateMatricule,
-                              onPasswordChanged: authController.updatePassword,
-                              onTogglePassword: authController.togglePasswordVisibility,
-                              onToggleRememberMe: authController.toggleRememberMe,
-                              onSignUp: () => authController.toggleAuthMode(),
-                              onSignIn: () async {
-                                final success = await authController.signIn();
-                                if (success && context.mounted) {
-                                  _navigateAfterAuth(context);
-                                }
-                              },
-                              isLoading: authController.isLoading,
+                    if (headerHeight > 160) ...[
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.asset(
+                              'assets/logo/logo.png',
+                              width: 44,
+                              height: 44,
                             ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Callwave',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    Flexible(
+                      child: Text(
+                        authController.isSignUp
+                            ? l10n.createAccountTitle
+                            : l10n.welcomeTitle,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // Trust & Security Footer
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.lock_outline_rounded,
-                    size: 13,
-                    color: Color(0xFF94A3B8),
+            ),
+            Positioned(
+              top: headerHeight,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(32),
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    l10n.officialSecurityTag,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w500,
-                    ),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+                  child: _buildFormContent(
+                    context,
+                    authController,
+                    mobile: true,
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: 14),
-            ],
-          ),
-        ),
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

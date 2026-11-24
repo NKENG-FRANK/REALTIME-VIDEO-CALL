@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
 import '../../../../config/theme/app_colors.dart';
-import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../contacts/presentation/controllers/contacts_controller.dart';
+
 import 'package:videocall/features/calls/domain/models/call_log.dart';
 import 'package:videocall/features/calls/presentation/controllers/calls_controller.dart';
 
@@ -64,7 +64,10 @@ void showCallTypeSelectionDialog(
                   if (recipientMatricule.isNotEmpty)
                     Text(
                       recipientMatricule,
-                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                 ],
               ),
@@ -87,11 +90,13 @@ void showCallTypeSelectionDialog(
                     foregroundColor: AppColors.primary,
                     side: const BorderSide(color: AppColors.primary),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    _launchDirectCall(
+                    launchDirectCall(
                       context,
                       isVideo: false,
                       recipientUserId: recipientUserId,
@@ -111,11 +116,13 @@ void showCallTypeSelectionDialog(
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   onPressed: () {
                     Navigator.of(ctx).pop();
-                    _launchDirectCall(
+                    launchDirectCall(
                       context,
                       isVideo: true,
                       recipientUserId: recipientUserId,
@@ -133,38 +140,27 @@ void showCallTypeSelectionDialog(
   );
 }
 
-/// Build a unique room ID per call session from two user IDs.
-/// A timestamp suffix ensures a fresh room is created for every new call,
-/// preventing the second call from reusing a potentially stale room on the backend.
-String _buildRoomId(String userIdA, String userIdB) {
-  final ids = [userIdA, userIdB]..sort();
-  // Short epoch suffix (last 8 digits) makes the room unique per session
-  final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000)
-      .toString()
-      .substring(3); // e.g. "8392481"
-  return 'direct-${ids[0]}-${ids[1]}-$ts';
-}
-
 /// Shared helper: derive initials from name
 String _deriveInitials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((e) => e.isNotEmpty)
+      .toList();
   if (parts.isEmpty) return 'U';
   if (parts.length == 1) return parts[0][0].toUpperCase();
   return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
 }
 
 /// Shared helper: emit call:invite then navigate to CallPage.
-void _launchDirectCall(
+void launchDirectCall(
   BuildContext context, {
   required bool isVideo,
   required String recipientUserId,
   required String recipientName,
   required String recipientMatricule,
 }) {
-  final authCtrl = context.read<AuthController>();
-  final user = authCtrl.currentUser;
-  final myUserId = user?['id']?.toString() ?? user?['userId']?.toString() ?? '';
-  final roomId = _buildRoomId(myUserId, recipientUserId);
+  final roomId = MeetingLinkService.createRoomId();
 
   // Save outgoing call log
   final log = CallLog(
@@ -201,7 +197,7 @@ void _launchDirectCall(
 }
 
 class _GroupCallLaunchDialog extends StatefulWidget {
-  const _GroupCallLaunchDialog({Key? key}) : super(key: key);
+  const _GroupCallLaunchDialog();
 
   @override
   State<_GroupCallLaunchDialog> createState() => _GroupCallLaunchDialogState();
@@ -219,8 +215,7 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
     super.initState();
     _titleController = TextEditingController(text: 'Group Sync Call');
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
-    _roomId = 'group-$randomCode';
+    _roomId = MeetingLinkService.createRoomId();
     _roomLink = MeetingLinkService.generateMeetingLink(
       roomId: _roomId,
       isVideo: true,
@@ -282,8 +277,9 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
         builder: (_) => ConnectingPage(
           callTitle: groupTitle,
           roomId: roomId,
-          recipientUserId:
-              recipientUserIds.isNotEmpty ? recipientUserIds.first : '',
+          recipientUserId: recipientUserIds.isNotEmpty
+              ? recipientUserIds.first
+              : '',
           recipientName: groupTitle,
           recipientMatricule: '${selected.length} members',
           isVideoCall: isVideo,
@@ -309,7 +305,7 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 24,
               offset: const Offset(0, 10),
             ),
@@ -330,10 +326,14 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.12),
+                      color: AppColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.groups_rounded, color: AppColors.primary, size: 22),
+                    child: const Icon(
+                      Icons.groups_rounded,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -351,14 +351,21 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                         SizedBox(height: 2),
                         Text(
                           'Add members or share a call join link',
-                          style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -374,20 +381,47 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                     // Group Title Input
                     const Text(
                       'Group Call Title',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _titleController,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'e.g. Ministry Engineering Sync',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
                         filled: true,
                         fillColor: const Color(0xFFF6FAF7),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFFD0E0D4))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFFD0E0D4))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFD0E0D4),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFD0E0D4),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                            width: 1.5,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -395,31 +429,50 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                     // Copy Room Link Box
                     const Text(
                       'Share Join Link',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF4EE).withOpacity(0.6),
+                        color: const Color(0xFFEAF4EE).withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(color: const Color(0xFFCDE8D8)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.link_rounded, color: AppColors.primary, size: 18),
+                          const Icon(
+                            Icons.link_rounded,
+                            color: AppColors.primary,
+                            size: 18,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               _roomLink,
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
                           IconButton(
                             tooltip: 'Share Invite',
-                            icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.primary),
+                            icon: const Icon(
+                              Icons.share_rounded,
+                              size: 18,
+                              color: AppColors.primary,
+                            ),
                             onPressed: () {
                               MeetingLinkService.showShareModal(
                                 context,
@@ -440,9 +493,17 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(7),
+                              ),
                             ),
                           ),
                         ],
@@ -455,18 +516,29 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                       children: [
                         const Text(
                           'Add Members to Group',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.12),
+                            color: AppColors.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '${_selectedContactIds.length} Selected',
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.primary),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
                       ],
@@ -478,12 +550,26 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                       style: const TextStyle(fontSize: 11),
                       decoration: InputDecoration(
                         hintText: 'Search contacts by name or matricule...',
-                        prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.textMuted),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
                         filled: true,
                         fillColor: const Color(0xFFF6FAF7),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE0EAE2))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE0EAE2))),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0EAE2),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0EAE2),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -491,7 +577,9 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                     // Contacts Multi-Select List
                     Consumer<ContactsController>(
                       builder: (context, contactsCtrl, _) {
-                        final query = _searchController.text.trim().toLowerCase();
+                        final query = _searchController.text
+                            .trim()
+                            .toLowerCase();
                         final contacts = contactsCtrl.contacts.where((c) {
                           return query.isEmpty ||
                               c.name.toLowerCase().contains(query) ||
@@ -504,7 +592,10 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                             child: Center(
                               child: Text(
                                 'No matching contacts found.',
-                                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
                             ),
                           );
@@ -517,49 +608,66 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                             constraints: const BoxConstraints(maxHeight: 190),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(9),
-                              border: Border.all(color: const Color(0xFFE0EAE2)),
+                              border: Border.all(
+                                color: const Color(0xFFE0EAE2),
+                              ),
                             ),
                             child: ListView.separated(
                               shrinkWrap: true,
                               itemCount: contacts.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFEEF5EF)),
+                              separatorBuilder: (_, _) => const Divider(
+                                height: 1,
+                                color: Color(0xFFEEF5EF),
+                              ),
                               itemBuilder: (context, idx) {
                                 final contact = contacts[idx];
-                                final isSelected = _selectedContactIds.contains(contact.id);
+                                final isSelected = _selectedContactIds.contains(
+                                  contact.id,
+                                );
                                 return CheckboxListTile(
-                                value: isSelected,
-                                activeColor: AppColors.primary,
-                                visualDensity: VisualDensity.compact,
-                                onChanged: (val) {
-                                  setState(() {
-                                    if (val == true) {
-                                      _selectedContactIds.add(contact.id);
-                                    } else {
-                                      _selectedContactIds.remove(contact.id);
-                                    }
-                                  });
-                                },
-                                title: Text(
-                                  contact.name,
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                                subtitle: Text(
-                                  contact.matricule,
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                ),
-                                secondary: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: contact.color,
-                                  child: Text(
-                                    contact.initials,
-                                    style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                                  value: isSelected,
+                                  activeColor: AppColors.primary,
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      if (val == true) {
+                                        _selectedContactIds.add(contact.id);
+                                      } else {
+                                        _selectedContactIds.remove(contact.id);
+                                      }
+                                    });
+                                  },
+                                  title: Text(
+                                    contact.name,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
+                                  subtitle: Text(
+                                    contact.matricule,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                  secondary: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: contact.color,
+                                    child: Text(
+                                      contact.initials,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      );
+                        );
                       },
                     ),
                   ],
@@ -585,8 +693,13 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                         foregroundColor: AppColors.primary,
                         side: const BorderSide(color: AppColors.primary),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
@@ -601,8 +714,13 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
@@ -617,10 +735,11 @@ class _GroupCallLaunchDialogState extends State<_GroupCallLaunchDialog> {
 }
 
 class _OneToOneCallLaunchDialog extends StatefulWidget {
-  const _OneToOneCallLaunchDialog({Key? key}) : super(key: key);
+  const _OneToOneCallLaunchDialog();
 
   @override
-  State<_OneToOneCallLaunchDialog> createState() => _OneToOneCallLaunchDialogState();
+  State<_OneToOneCallLaunchDialog> createState() =>
+      _OneToOneCallLaunchDialogState();
 }
 
 class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
@@ -633,8 +752,7 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    final randomCode = DateTime.now().millisecondsSinceEpoch.toString();
-    _roomId = 'direct-$randomCode';
+    _roomId = MeetingLinkService.createRoomId();
     _directCallLink = MeetingLinkService.generateMeetingLink(
       roomId: _roomId,
       isVideo: true,
@@ -673,7 +791,7 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
       (c) => c.id == _selectedContactId,
     );
     Navigator.pop(context);
-    _launchDirectCall(
+    launchDirectCall(
       context,
       isVideo: isVideo,
       recipientUserId: contact.id,
@@ -695,7 +813,7 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               blurRadius: 24,
               offset: const Offset(0, 10),
             ),
@@ -719,7 +837,11 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                       color: AppColors.accent,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.person_rounded, color: AppColors.primary, size: 22),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -737,14 +859,21 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                         SizedBox(height: 2),
                         Text(
                           'Select a contact or share a direct call link',
-                          style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -760,31 +889,50 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                     // Copy Direct Call Link
                     const Text(
                       'Direct Call Link',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF4EE).withOpacity(0.6),
+                        color: const Color(0xFFEAF4EE).withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(color: const Color(0xFFCDE8D8)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.link_rounded, color: AppColors.primary, size: 18),
+                          const Icon(
+                            Icons.link_rounded,
+                            color: AppColors.primary,
+                            size: 18,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               _directCallLink,
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
                           IconButton(
                             tooltip: 'Share Invite',
-                            icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.primary),
+                            icon: const Icon(
+                              Icons.share_rounded,
+                              size: 18,
+                              color: AppColors.primary,
+                            ),
                             onPressed: () {
                               MeetingLinkService.showShareModal(
                                 context,
@@ -803,9 +951,17 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(7),
+                              ),
                             ),
                           ),
                         ],
@@ -816,7 +972,11 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                     // Select Recipient Section
                     const Text(
                       'Select Recipient',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -825,12 +985,26 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                       style: const TextStyle(fontSize: 11),
                       decoration: InputDecoration(
                         hintText: 'Search by name or matricule...',
-                        prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.textMuted),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
                         filled: true,
                         fillColor: const Color(0xFFF6FAF7),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE0EAE2))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE0EAE2))),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0EAE2),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0EAE2),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -838,11 +1012,14 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                     // Contacts List
                     Consumer<ContactsController>(
                       builder: (context, contactsCtrl, _) {
-                        final query = _searchController.text.trim().toLowerCase();
+                        final query = _searchController.text
+                            .trim()
+                            .toLowerCase();
                         final contacts = contactsCtrl.contacts.where((c) {
-                          return !c.group && (query.isEmpty ||
-                              c.name.toLowerCase().contains(query) ||
-                              c.matricule.toLowerCase().contains(query));
+                          return !c.group &&
+                              (query.isEmpty ||
+                                  c.name.toLowerCase().contains(query) ||
+                                  c.matricule.toLowerCase().contains(query));
                         }).toList();
 
                         if (contacts.isEmpty) {
@@ -851,7 +1028,10 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                             child: Center(
                               child: Text(
                                 'No contacts found.',
-                                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
                             ),
                           );
@@ -864,45 +1044,60 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                             constraints: const BoxConstraints(maxHeight: 210),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(9),
-                              border: Border.all(color: const Color(0xFFE0EAE2)),
+                              border: Border.all(
+                                color: const Color(0xFFE0EAE2),
+                              ),
                             ),
                             child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: contacts.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFEEF5EF)),
-                            itemBuilder: (context, idx) {
-                              final contact = contacts[idx];
-                              return RadioListTile<String>(
-                                value: contact.id,
-                                groupValue: _selectedContactId,
-                                activeColor: AppColors.primary,
-                                visualDensity: VisualDensity.compact,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _selectedContactId = val;
-                                  });
-                                },
-                                title: Text(
-                                  contact.name,
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                                ),
-                                subtitle: Text(
-                                  contact.matricule,
-                                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
-                                ),
-                                secondary: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: contact.color,
-                                  child: Text(
-                                    contact.initials,
-                                    style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                              shrinkWrap: true,
+                              itemCount: contacts.length,
+                              separatorBuilder: (_, _) => const Divider(
+                                height: 1,
+                                color: Color(0xFFEEF5EF),
+                              ),
+                              itemBuilder: (context, idx) {
+                                final contact = contacts[idx];
+                                return RadioListTile<String>(
+                                  value: contact.id,
+                                  groupValue: _selectedContactId,
+                                  activeColor: AppColors.primary,
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _selectedContactId = val;
+                                    });
+                                  },
+                                  title: Text(
+                                    contact.name,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
+                                  subtitle: Text(
+                                    contact.matricule,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                  secondary: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: contact.color,
+                                    child: Text(
+                                      contact.initials,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      );
+                        );
                       },
                     ),
                   ],
@@ -928,8 +1123,13 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                         foregroundColor: AppColors.primary,
                         side: const BorderSide(color: AppColors.primary),
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
@@ -944,8 +1144,13 @@ class _OneToOneCallLaunchDialogState extends State<_OneToOneCallLaunchDialog> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),

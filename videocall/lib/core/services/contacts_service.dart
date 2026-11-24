@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
 import '../../config/api_config.dart';
 import 'auth_service.dart';
 
@@ -16,7 +18,7 @@ class ContactItem {
   String get name => displayName;
   bool get group => false;
   bool get online => true;
-  Color get color => const Color(0xFF2D5016);
+  Color get color => const Color(0xFF1E9E64);
   String get initials {
     final parts = displayName.trim().split(' ');
     if (parts.isEmpty || parts.first.isEmpty) return 'U';
@@ -35,7 +37,8 @@ class ContactItem {
   });
 
   factory ContactItem.fromJson(Map<String, dynamic> json) {
-    final displayName = json['display_name'] ??
+    final displayName =
+        json['display_name'] ??
         json['displayName'] ??
         ((json['first_name'] != null || json['last_name'] != null)
             ? '${json['first_name'] ?? ''} ${json['last_name'] ?? ''}'.trim()
@@ -85,7 +88,11 @@ class ContactsService {
       if (token == null) return [];
 
       final uri = Uri.parse('${ApiConfig.userManagementBaseUrl}/users/search')
-          .replace(queryParameters: searchQuery.trim().isNotEmpty ? {'q': searchQuery.trim()} : null);
+          .replace(
+            queryParameters: searchQuery.trim().isNotEmpty
+                ? {'q': searchQuery.trim()}
+                : null,
+          );
 
       final response = await http.get(
         uri,

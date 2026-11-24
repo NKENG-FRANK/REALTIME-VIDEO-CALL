@@ -17,10 +17,8 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
     return next(new Error('Unauthorized: No token provided'));
   }
 
-  const secret = (config.app as any).jwtSecret || 'dev-secret-key-change-in-prod';
-
   try {
-    const payload = jwt.verify(token, secret) as JwtPayload;
+    const payload = jwt.verify(token, config.app.jwtSecret) as JwtPayload;
     socket.data.userId = payload.userId;
     next();
   } catch {

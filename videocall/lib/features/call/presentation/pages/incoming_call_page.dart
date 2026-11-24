@@ -1,6 +1,9 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/services/ringtone_service.dart';
 
 /// Incoming call screen showing caller info with pulsing avatar,
@@ -18,18 +21,18 @@ class IncomingCallPage extends StatefulWidget {
   final VoidCallback? onDecline;
 
   const IncomingCallPage({
-    Key? key,
+    super.key,
     required this.callerName,
     required this.callerMatricule,
     required this.roomId,
     this.callerInitials = '',
-    this.callerColor = const Color(0xFF8752F4),
+    this.callerColor = const Color(0xFF1E9E64),
     this.isVideoCall = true,
     this.isGroupCall = false,
     this.groupTitle,
     this.onAccept,
     this.onDecline,
-  }) : super(key: key);
+  });
 
   @override
   State<IncomingCallPage> createState() => _IncomingCallPageState();
@@ -67,103 +70,136 @@ class _IncomingCallPageState extends State<IncomingCallPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      backgroundColor: AppColors.callBackground,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 60),
-              // Pulsing avatar
-              _buildPulsingAvatar(),
-              const SizedBox(height: 18),
-              // Call type label
-              Text(
-                widget.isGroupCall
-                    ? (widget.isVideoCall
-                        ? 'INCOMING GROUP VIDEO CALL'
-                        : 'INCOMING GROUP AUDIO CALL')
-                    : (widget.isVideoCall
-                        ? 'INCOMING VIDEO CALL'
-                        : 'INCOMING AUDIO CALL'),
-                style: TextStyle(
-                  color: AppColors.primary.withOpacity(0.55),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.8,
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Group title (shown prominently for group calls)
-              if (widget.isGroupCall && widget.groupTitle != null && widget.groupTitle!.isNotEmpty) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.groups_rounded, size: 14, color: AppColors.primary.withOpacity(0.8)),
-                      const SizedBox(width: 6),
-                      Text(
-                        widget.groupTitle!,
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              // Caller name
-              Text(
-                widget.callerName,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              // Subtitle: group invite message or matricule
-              Text(
-                widget.isGroupCall
-                    ? 'is inviting you to join'
-                    : widget.callerMatricule,
-                style: TextStyle(
-                  color: AppColors.textMuted.withOpacity(0.8),
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 28),
-              // Audio waveform
-              _buildWaveform(),
-              const SizedBox(height: 40),
-              // Action buttons
-              _buildActionButtons(),
-              const SizedBox(height: 32),
-              // Remind me link
-              TextButton(
-                onPressed: () {},
-                child: Text(
-                  'Remind me in 5 minutes',
+      backgroundColor: const Color(0xFF4E8F72),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(gradient: Palette.callGradient),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 60),
+                // Pulsing avatar
+                _buildPulsingAvatar(),
+                const SizedBox(height: 18),
+                // Call type label
+                Text(
+                  widget.isGroupCall
+                      ? (widget.isVideoCall
+                            ? l10n.text(
+                                fr: 'APPEL VIDÉO DE GROUPE',
+                                en: 'INCOMING GROUP VIDEO CALL',
+                              )
+                            : l10n.text(
+                                fr: 'APPEL AUDIO DE GROUPE',
+                                en: 'INCOMING GROUP AUDIO CALL',
+                              ))
+                      : (widget.isVideoCall
+                            ? l10n.text(
+                                fr: 'APPEL VIDÉO ENTRANT',
+                                en: 'INCOMING VIDEO CALL',
+                              )
+                            : l10n.text(
+                                fr: 'APPEL AUDIO ENTRANT',
+                                en: 'INCOMING AUDIO CALL',
+                              )),
                   style: TextStyle(
-                    color: AppColors.textMuted.withOpacity(0.7),
-                    fontSize: 11,
+                    color: const Color(0xFF3DDC97),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
                   ),
                 ),
-              ),
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 10),
+                // Group title (shown prominently for group calls)
+                if (widget.isGroupCall &&
+                    widget.groupTitle != null &&
+                    widget.groupTitle!.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.groups_rounded,
+                          size: 14,
+                          color: const Color(0xFF3DDC97),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.groupTitle!,
+                          style: TextStyle(
+                            color: const Color(0xFF3DDC97),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // Caller name
+                Text(
+                  widget.callerName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                // Subtitle: group invite message or matricule
+                Text(
+                  widget.isGroupCall
+                      ? l10n.text(
+                          fr: 'vous invite à rejoindre l’appel',
+                          en: 'is inviting you to join',
+                        )
+                      : widget.callerMatricule,
+                  style: TextStyle(
+                    color: const Color(0xFF8DA69A),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                // Audio waveform
+                _buildWaveform(),
+                const SizedBox(height: 40),
+                // Action buttons
+                _buildActionButtons(),
+                const SizedBox(height: 32),
+                // Remind me link
+                TextButton(
+                  onPressed: () {},
+                  child: Text(
+                    l10n.text(
+                      fr: 'Me le rappeler dans 5 minutes',
+                      en: 'Remind me in 5 minutes',
+                    ),
+                    style: TextStyle(
+                      color: AppColors.textMuted.withValues(alpha: 0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),
@@ -177,7 +213,8 @@ class _IncomingCallPageState extends State<IncomingCallPage>
       child: AnimatedBuilder(
         animation: _pulseController,
         builder: (context, child) {
-          final pulse = math.sin(_pulseController.value * math.pi * 2) * 0.5 + 0.5;
+          final pulse =
+              math.sin(_pulseController.value * math.pi * 2) * 0.5 + 0.5;
           return Stack(
             alignment: Alignment.center,
             children: [
@@ -187,7 +224,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 height: 150 + pulse * 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.textMuted.withOpacity(0.06 + pulse * 0.04),
+                  color: Colors.white.withValues(alpha: 0.06 + pulse * 0.04),
                 ),
               ),
               // Inner ring
@@ -196,7 +233,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 height: 128,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.textMuted.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.13),
                 ),
               ),
               // Avatar
@@ -209,7 +246,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   color: widget.callerColor,
                   boxShadow: [
                     BoxShadow(
-                      color: widget.callerColor.withOpacity(0.3),
+                      color: widget.callerColor.withValues(alpha: 0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -218,7 +255,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                 child: Text(
                   widget.callerInitials.isNotEmpty
                       ? widget.callerInitials
-                      : _IncomingCallPageState._buildInitials(widget.callerName),
+                      : _IncomingCallPageState._buildInitials(
+                          widget.callerName,
+                        ),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 30,
@@ -235,18 +274,16 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   height: 26,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.primary.withOpacity(0.8),
+                    color: AppColors.primary.withValues(alpha: 0.8),
                     border: Border.all(
-                      color: AppColors.callBackground,
+                      color: const Color(0xFF07110C),
                       width: 2,
                     ),
                   ),
                   child: Icon(
                     widget.isGroupCall
                         ? Icons.groups_rounded
-                        : (widget.isVideoCall
-                            ? Icons.videocam
-                            : Icons.phone),
+                        : (widget.isVideoCall ? Icons.videocam : Icons.phone),
                     size: 13,
                     color: Colors.white,
                   ),
@@ -272,8 +309,8 @@ class _IncomingCallPageState extends State<IncomingCallPage>
             children: List.generate(24, (index) {
               final phase = _waveController.value * math.pi * 2;
               final offset = index * 0.35;
-              final height = 4.0 +
-                  (math.sin(phase + offset) * 0.5 + 0.5) * 16.0;
+              final height =
+                  4.0 + (math.sin(phase + offset) * 0.5 + 0.5) * 16.0;
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 1),
                 child: AnimatedContainer(
@@ -281,7 +318,7 @@ class _IncomingCallPageState extends State<IncomingCallPage>
                   width: 2.5,
                   height: height,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.35),
+                    color: const Color(0xFF3DDC97).withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -294,13 +331,14 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   }
 
   Widget _buildActionButtons() {
+    final l10n = AppLocalizations.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // Decline button
         _CallActionButton(
           icon: Icons.phone,
-          label: 'Decline',
+          label: l10n.decline,
           color: AppColors.callDecline,
           rotateIcon: true,
           onTap: () {
@@ -319,8 +357,8 @@ class _IncomingCallPageState extends State<IncomingCallPage>
         // Accept button
         _CallActionButton(
           icon: widget.isVideoCall ? Icons.videocam : Icons.phone,
-          label: 'Accept',
-          color: AppColors.callAccept,
+          label: l10n.answer,
+          color: AppColors.primary,
           onTap: () {
             RingtoneService().stop();
             if (widget.onAccept != null) {
@@ -339,7 +377,9 @@ class _IncomingCallPageState extends State<IncomingCallPage>
   static String _buildInitials(String name) {
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty) return '??';
-    if (parts.length == 1) return parts[0].substring(0, math.min(2, parts[0].length)).toUpperCase();
+    if (parts.length == 1) {
+      return parts[0].substring(0, math.min(2, parts[0].length)).toUpperCase();
+    }
     return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
   }
 }
@@ -378,14 +418,16 @@ class _CallActionButtonState extends State<_CallActionButton> {
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              width: 64,
-              height: 64,
+              width: widget.label == 'Accept' ? 72 : 60,
+              height: widget.label == 'Accept' ? 72 : 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: widget.color,
                 boxShadow: [
                   BoxShadow(
-                    color: widget.color.withOpacity(_hovering ? 0.45 : 0.25),
+                    color: widget.color.withValues(
+                      alpha: _hovering ? 0.45 : 0.25,
+                    ),
                     blurRadius: _hovering ? 20 : 12,
                     offset: const Offset(0, 6),
                   ),
@@ -393,18 +435,14 @@ class _CallActionButtonState extends State<_CallActionButton> {
               ),
               child: Transform.rotate(
                 angle: widget.rotateIcon ? 2.36 : 0,
-                child: Icon(
-                  widget.icon,
-                  size: 26,
-                  color: Colors.white,
-                ),
+                child: Icon(widget.icon, size: 26, color: Colors.white),
               ),
             ),
             const SizedBox(height: 10),
             Text(
               widget.label,
               style: const TextStyle(
-                color: AppColors.textPrimary,
+                color: Colors.white,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),

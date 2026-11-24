@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart' as sfu;
+import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart'
+    as sfu;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../../config/api_config.dart';
 import 'auth_service.dart';
+import 'turn_credentials_service.dart';
 
 enum CallState { idle, connecting, connected, ended }
 
@@ -41,6 +43,7 @@ class NetworkQuality {
 class WebRTCCallService extends ChangeNotifier {
   io.Socket? _socket;
   MediaStream? _localStream;
+  final Set<MediaStream> _disposingStreams = <MediaStream>{};
   bool _isGroupCall = false;
 
   // ── Per-peer WebRTC state ─────────────────────────────────────────────────
@@ -148,34 +151,33 @@ class WebRTCCallService extends ChangeNotifier {
   String get formattedDuration {
     if (_callStartTime == null) return '00:05';
     final duration = DateTime.now().difference(_callStartTime!);
-    final minutes =
-        duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds =
-        duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
 
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
       // Primary STUN servers
-      {'urls': 'stun:144.91.89.100:3478'},
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun.cloudflare.com:3478'},
-      // Dedicated CallWave CoTURN Relay (UDP & TCP fallback on port 3478)
-      {
-        'urls': [
-          'turn:144.91.89.100:3478',
-          'turn:144.91.89.100:3478?transport=tcp',
-        ],
-        'username': 'callwave',
-        'credential': 'callwave_secret',
-      },
     ],
     'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
     'iceTransportPolicy': 'all',
   };
+
+  Future<Map<String, dynamic>?> _turnConfiguration() async {
+    final token = await AuthService.getToken();
+    if (token == null || token.isEmpty) return null;
+    final turn = await TurnCredentialsService.fetch(token: token);
+    if (turn == null) return null;
+    return {
+      ..._iceServers,
+      'iceServers': [...(_iceServers['iceServers'] as List), turn],
+    };
+  }
 
   late final Future<void> _initRenderersFuture = _initRenderers();
 
@@ -197,8 +199,9 @@ class WebRTCCallService extends ChangeNotifier {
   Future<void> _drainPendingCandidates(String peerId) async {
     final pc = _peerConnections[peerId];
     if (pc == null) return;
-    final candidates =
-        List<RTCIceCandidate>.from(_pendingCandidates[peerId] ?? []);
+    final candidates = List<RTCIceCandidate>.from(
+      _pendingCandidates[peerId] ?? [],
+    );
     _pendingCandidates[peerId]?.clear();
     debugPrint(
       '[WebRTC] Draining ${candidates.length} pending ICE candidate(s) for peer $peerId',
@@ -230,7 +233,9 @@ class WebRTCCallService extends ChangeNotifier {
     try {
       final parts = userToken.split('.');
       if (parts.length == 3) {
-        final payloadString = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+        final payloadString = utf8.decode(
+          base64Url.decode(base64Url.normalize(parts[1])),
+        );
         final payload = jsonDecode(payloadString);
         if (payload['userId'] != null) {
           _currentUserId = payload['userId'].toString();
@@ -240,7 +245,8 @@ class WebRTCCallService extends ChangeNotifier {
 
     final userMap = await AuthService.getCurrentUser();
     if (_currentUserId == null && userMap != null) {
-      _currentUserId = (userMap['id']?.toString()) ?? (userMap['userId']?.toString());
+      _currentUserId =
+          (userMap['id']?.toString()) ?? (userMap['userId']?.toString());
     }
 
     if (_socket != null && _socket!.connected) return;
@@ -266,12 +272,15 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint('[WebRTC] Connected to Video Calls Socket.io server');
       if (_currentRoomId != null && _callState == CallState.connected) {
         debugPrint(
-          '[WebRTC] Socket reconnected during active call - rejoining room $_currentRoomId',
+          '[WebRTC] Socket reconnected during active call - rejoining room',
         );
         final callType = _isGroupCall
             ? (_isVideoCall ? 'GROUP_VIDEO' : 'GROUP_AUDIO')
             : (_isVideoCall ? 'DIRECT_VIDEO' : 'DIRECT_AUDIO');
-        _socket!.emit('room:join', {'roomId': _currentRoomId, 'callType': callType});
+        _socket!.emit('room:join', {
+          'roomId': _currentRoomId,
+          'callType': callType,
+        });
         for (final peerId in _peerConnections.keys) {
           _restartIceForPeer(peerId);
         }
@@ -279,7 +288,9 @@ class WebRTCCallService extends ChangeNotifier {
     });
 
     _socket!.onDisconnect((reason) {
-      debugPrint('[WebRTC] Disconnected from Video Calls Socket.io server: $reason');
+      debugPrint(
+        '[WebRTC] Disconnected from Video Calls Socket.io server: $reason',
+      );
       if (_callState == CallState.connected) {
         _reconnectingPeers.addAll(_peerConnections.keys);
         _safeNotify();
@@ -292,7 +303,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     // ── room:joined ────────────────────────────────────────────────────────
     _socket!.on('room:joined', (data) async {
-      debugPrint('[WebRTC] Joined room: $data');
+      debugPrint('[WebRTC] Joined room');
       final map = data as Map<String, dynamic>?;
       final existingParticipants = map?['participants'] as List?;
 
@@ -307,12 +318,17 @@ class WebRTCCallService extends ChangeNotifier {
         // Safeguard watchdog: Give the caller 6000ms to send their offer (needed for mobile/cellular devices).
         // Only initiate a fallback offer if after 6s no peer connection / offer was processed.
         for (final p in existingParticipants) {
-          final pId = (p is Map) ? _peerIdFromData(Map<String, dynamic>.from(p)) : p.toString();
+          final pId = (p is Map)
+              ? _peerIdFromData(Map<String, dynamic>.from(p))
+              : p.toString();
           if (pId.isNotEmpty && pId != _currentUserId) {
             _offerWatchdogTimers[pId]?.cancel();
             _offerWatchdogTimers[pId] = Timer(const Duration(milliseconds: 6000), () {
-              if (!_peerConnections.containsKey(pId) && _callState != CallState.ended) {
-                debugPrint('[WebRTC] Offer watchdog (6000ms): Initiating fallback offer to existing peer $pId');
+              if (!_peerConnections.containsKey(pId) &&
+                  _callState != CallState.ended) {
+                debugPrint(
+                  '[WebRTC] Offer watchdog (6000ms): Initiating fallback offer to existing peer $pId',
+                );
                 _createOffer(pId);
               }
             });
@@ -333,8 +349,9 @@ class WebRTCCallService extends ChangeNotifier {
         // In SFU mode, media streams arrive via 'room:new_producer' events
         return;
       }
-      final map =
-          data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final map = data is Map
+          ? data as Map<String, dynamic>
+          : <String, dynamic>{};
       final peerId = _peerIdFromData(
         map,
         fallback: 'peer_${_peerConnections.length}',
@@ -376,11 +393,15 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('room:new_producer', (data) async {
       debugPrint('[WebRTC-SFU] Received room:new_producer: $data');
       if (!_isSfuMode) return;
-      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final map = data is Map
+          ? data as Map<String, dynamic>
+          : <String, dynamic>{};
       final peerUserId = map['userId']?.toString();
       final producerId = map['producerId']?.toString();
       final kind = map['kind']?.toString() ?? 'video';
-      if (peerUserId != null && producerId != null && peerUserId != _currentUserId) {
+      if (peerUserId != null &&
+          producerId != null &&
+          peerUserId != _currentUserId) {
         await _consumeProducer(
           producerId: producerId,
           peerUserId: peerUserId,
@@ -393,7 +414,9 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('consumer:closed', (data) {
       debugPrint('[WebRTC-SFU] Received consumer:closed: $data');
       if (!_isSfuMode) return;
-      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final map = data is Map
+          ? data as Map<String, dynamic>
+          : <String, dynamic>{};
       final consumerId = map['consumerId']?.toString();
       if (consumerId != null) {
         _handleSfuConsumerClosed(consumerId);
@@ -405,8 +428,12 @@ class WebRTCCallService extends ChangeNotifier {
       if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
-      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
-        debugPrint('[WebRTC] Ignoring offer targeted to $targetUserId (my id: $_currentUserId)');
+      if (targetUserId != null &&
+          _currentUserId != null &&
+          targetUserId != _currentUserId) {
+        debugPrint(
+          '[WebRTC] Ignoring offer targeted to $targetUserId (my id: $_currentUserId)',
+        );
         return;
       }
       debugPrint('[WebRTC] Received WebRTC offer');
@@ -424,8 +451,12 @@ class WebRTCCallService extends ChangeNotifier {
       if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
-      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
-        debugPrint('[WebRTC] Ignoring answer targeted to $targetUserId (my id: $_currentUserId)');
+      if (targetUserId != null &&
+          _currentUserId != null &&
+          targetUserId != _currentUserId) {
+        debugPrint(
+          '[WebRTC] Ignoring answer targeted to $targetUserId (my id: $_currentUserId)',
+        );
         return;
       }
       debugPrint('[WebRTC] Received WebRTC answer');
@@ -436,7 +467,8 @@ class WebRTCCallService extends ChangeNotifier {
         fallback: _peerConnections.keys.firstOrNull ?? 'peer_0',
       );
 
-      if (incomingSdp.isNotEmpty && _lastProcessedAnswerSdp[peerId] == incomingSdp) {
+      if (incomingSdp.isNotEmpty &&
+          _lastProcessedAnswerSdp[peerId] == incomingSdp) {
         debugPrint('[WebRTC] Duplicate answer received for $peerId — ignoring');
         return;
       }
@@ -444,12 +476,17 @@ class WebRTCCallService extends ChangeNotifier {
 
       final pc = _peerConnections[peerId];
       if (pc == null) {
-        debugPrint('[WebRTC] No peer connection found for peerId: $peerId, connections: ${_peerConnections.keys}');
+        debugPrint(
+          '[WebRTC] No peer connection found for peerId: $peerId, connections: ${_peerConnections.keys}',
+        );
         final fallbackPc = _peerConnections.values.firstOrNull;
         if (fallbackPc != null) {
-          final description =
-              RTCSessionDescription(incomingSdp, sdpMap['type']);
-          if (fallbackPc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+          final description = RTCSessionDescription(
+            incomingSdp,
+            sdpMap['type'],
+          );
+          if (fallbackPc.signalingState ==
+              RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
             await fallbackPc.setRemoteDescription(description);
           }
           final fallbackKey = _peerConnections.keys.first;
@@ -459,15 +496,17 @@ class WebRTCCallService extends ChangeNotifier {
         }
         return;
       }
-      if (pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
-        final description =
-            RTCSessionDescription(incomingSdp, sdpMap['type']);
+      if (pc.signalingState ==
+          RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+        final description = RTCSessionDescription(incomingSdp, sdpMap['type']);
         await pc.setRemoteDescription(description);
         await _drainPendingCandidates(peerId);
         await _rebindAndRestoreVideo(peerId);
         _updateAdaptiveBitrates();
       } else {
-        debugPrint('[WebRTC] Answer arrived for $peerId but signaling state is ${pc.signalingState} — skipping setRemoteDescription');
+        debugPrint(
+          '[WebRTC] Answer arrived for $peerId but signaling state is ${pc.signalingState} — skipping setRemoteDescription',
+        );
       }
     });
 
@@ -476,7 +515,9 @@ class WebRTCCallService extends ChangeNotifier {
       if (_isSfuMode) return;
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
-      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+      if (targetUserId != null &&
+          _currentUserId != null &&
+          targetUserId != _currentUserId) {
         return;
       }
       debugPrint('[WebRTC] <<< Remote ICE candidate arrived');
@@ -516,14 +557,18 @@ class WebRTCCallService extends ChangeNotifier {
     _socket!.on('webrtc:request_keyframe', (data) async {
       final map = data as Map<String, dynamic>;
       final targetUserId = map['targetUserId'] as String?;
-      if (targetUserId != null && _currentUserId != null && targetUserId != _currentUserId) {
+      if (targetUserId != null &&
+          _currentUserId != null &&
+          targetUserId != _currentUserId) {
         return;
       }
       final peerId = _peerIdFromData(
         map,
         fallback: _peerConnections.keys.firstOrNull ?? '',
       );
-      debugPrint('[WebRTC] Keyframe request received from $peerId — kickstart sender + recreate renderer');
+      debugPrint(
+        '[WebRTC] Keyframe request received from $peerId — kickstart sender + recreate renderer',
+      );
       // Kickstart our outgoing encoder (IDR keyframe to remote).
       await _kickstartVideoSender(peerId);
       // Also recreate our local renderer for the remote stream to unfreeze display.
@@ -538,7 +583,8 @@ class WebRTCCallService extends ChangeNotifier {
           stream: stream,
         );
         remoteRenderers[peerId] = freshPeerRenderer;
-        if (_isVideoCall && (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
+        if (_isVideoCall &&
+            (_remoteStreams.length == 1 || remoteRenderer.srcObject != null)) {
           await _recreateRenderer(
             old: remoteRenderer,
             stream: stream,
@@ -559,7 +605,9 @@ class WebRTCCallService extends ChangeNotifier {
         endedBy = (data['endedBy'] as String?) ?? (data['userId'] as String?);
       } else if (data is List && data.isNotEmpty && data.first is Map) {
         eventRoomId = data.first['roomId'] as String?;
-        endedBy = (data.first['endedBy'] as String?) ?? (data.first['userId'] as String?);
+        endedBy =
+            (data.first['endedBy'] as String?) ??
+            (data.first['userId'] as String?);
       }
       if (eventRoomId != null && eventRoomId != _currentRoomId) {
         debugPrint(
@@ -567,16 +615,20 @@ class WebRTCCallService extends ChangeNotifier {
         );
         return;
       }
-      debugPrint('[WebRTC] Received call:ended payload: $data');
+      debugPrint('[WebRTC] Received call:ended');
 
       // If a specific peer ended their call, just remove that peer connection.
       // NEVER blindly call endCall() — only treat as peer-left.
       if (endedBy != null && endedBy != _currentUserId) {
-        debugPrint('[WebRTC] Participant $endedBy ended their call, removing peer connection...');
+        debugPrint(
+          '[WebRTC] Participant $endedBy ended their call, removing peer connection...',
+        );
         _removePeerConnection(endedBy);
       } else if (endedBy == null) {
         // Unknown sender — treat as peer-left for ALL remaining peers
-        debugPrint('[WebRTC] call:ended with unknown sender — removing all peer connections');
+        debugPrint(
+          '[WebRTC] call:ended with unknown sender — removing all peer connections',
+        );
         final peerIds = _peerConnections.keys.toList();
         for (final pid in peerIds) {
           _removePeerConnection(pid);
@@ -588,7 +640,9 @@ class WebRTCCallService extends ChangeNotifier {
       }
 
       if (_peerConnections.isEmpty) {
-        debugPrint('[WebRTC] All peers left room — staying connected for new joiners or re-joins...');
+        debugPrint(
+          '[WebRTC] All peers left room — staying connected for new joiners or re-joins...',
+        );
         _callState = CallState.connecting;
         _safeNotify();
         _startAloneInRoomTimer();
@@ -607,9 +661,11 @@ class WebRTCCallService extends ChangeNotifier {
         debugPrint('[WebRTC] Ignoring stale room:participant_left');
         return;
       }
-      debugPrint('[WebRTC] Participant left: $data');
+      debugPrint('[WebRTC] Participant left');
 
-      final map = data is Map ? data as Map<String, dynamic> : <String, dynamic>{};
+      final map = data is Map
+          ? data as Map<String, dynamic>
+          : <String, dynamic>{};
       final peerId = _peerIdFromData(map);
 
       // Close only that peer's connection so the video tile disappears and call continues
@@ -617,7 +673,9 @@ class WebRTCCallService extends ChangeNotifier {
 
       // In all rooms (1-on-1 and group), stay alive waiting for new participants or re-joins
       if (_peerConnections.isEmpty) {
-        debugPrint('[WebRTC] All peers left room — staying connected for new joiners or re-joins...');
+        debugPrint(
+          '[WebRTC] All peers left room — staying connected for new joiners or re-joins...',
+        );
         _callState = CallState.connecting;
         _safeNotify();
         // For 1-on-1 calls, start a timer to auto-end after 45s alone
@@ -638,7 +696,7 @@ class WebRTCCallService extends ChangeNotifier {
     // 1. Explicitly request camera & microphone runtime permissions on Android / iOS
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
-         defaultTargetPlatform == TargetPlatform.iOS)) {
+            defaultTargetPlatform == TargetPlatform.iOS)) {
       try {
         final List<Permission> permsToRequest = [];
         if (audio) permsToRequest.add(Permission.microphone);
@@ -660,22 +718,20 @@ class WebRTCCallService extends ChangeNotifier {
       },
       'video': video
           ? (kIsWeb
-              ? {
-                  'width': {'ideal': 640},
-                  'height': {'ideal': 480},
-                  'frameRate': {'ideal': 24},
-                  'facingMode': 'user',
-                }
-              : {
-                  'facingMode': 'user',
-                  'optional': [],
-                })
+                ? {
+                    'width': {'ideal': 640},
+                    'height': {'ideal': 480},
+                    'frameRate': {'ideal': 24},
+                    'facingMode': 'user',
+                  }
+                : {'facingMode': 'user', 'optional': []})
           : false,
     };
 
     try {
-      _localStream =
-          await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _localStream = await navigator.mediaDevices.getUserMedia(
+        mediaConstraints,
+      );
       _mediaFailed = false;
       _mediaError = '';
       if (video) {
@@ -694,7 +750,9 @@ class WebRTCCallService extends ChangeNotifier {
       );
       _safeNotify();
     } catch (e) {
-      debugPrint('[WebRTC] ❌ Primary getUserMedia failed: $e, attempting simple fallback...');
+      debugPrint(
+        '[WebRTC] ❌ Primary getUserMedia failed: $e, attempting simple fallback...',
+      );
       try {
         _localStream = await navigator.mediaDevices.getUserMedia({
           'audio': true,
@@ -730,7 +788,9 @@ class WebRTCCallService extends ChangeNotifier {
             debugPrint('[WebRTC] ✅ Audio-only fallback succeeded');
             _safeNotify();
           } catch (audioError) {
-            debugPrint('[WebRTC] ❌ Audio-only fallback also failed: $audioError');
+            debugPrint(
+              '[WebRTC] ❌ Audio-only fallback also failed: $audioError',
+            );
             _mediaFailed = true;
             _mediaError = 'Camera and microphone unavailable: $audioError';
             _safeNotify();
@@ -758,12 +818,16 @@ class WebRTCCallService extends ChangeNotifier {
         for (final track in _localStream!.getTracks()) {
           final alreadyAdded = senders.any((s) => s.track?.id == track.id);
           if (!alreadyAdded) {
-            debugPrint('[WebRTC] Late-binding ${track.kind} track to peer ${entry.key}');
+            debugPrint(
+              '[WebRTC] Late-binding ${track.kind} track to peer ${entry.key}',
+            );
             await pc.addTrack(track, _localStream!);
           }
         }
       } catch (e) {
-        debugPrint('[WebRTC] Error late-binding track to peer ${entry.key}: $e');
+        debugPrint(
+          '[WebRTC] Error late-binding track to peer ${entry.key}: $e',
+        );
       }
     }
   }
@@ -773,7 +837,7 @@ class WebRTCCallService extends ChangeNotifier {
   /// Pass [isGroupCall] = true for group calls so the correct
   /// `callType` (`GROUP_VIDEO` / `GROUP_AUDIO`) is emitted and
   /// per-peer connection logic is enabled.
-  Future<void> joinCallRoom(
+  Future<bool> joinCallRoom(
     String roomId, {
     bool isVideoCall = true,
     bool isGroupCall = false,
@@ -786,7 +850,9 @@ class WebRTCCallService extends ChangeNotifier {
 
     // Ensure socket is connected before joining.
     if (_socket != null && !_socket!.connected) {
-      debugPrint('[WebRTC] Socket not connected yet, waiting for connection...');
+      debugPrint(
+        '[WebRTC] Socket not connected yet, waiting for connection...',
+      );
       _socket!.connect();
       int waitMs = 0;
       while (!_socket!.connected && waitMs < 8000) {
@@ -799,7 +865,7 @@ class WebRTCCallService extends ChangeNotifier {
       debugPrint(
         '[WebRTC] Socket failed to connect after 8s — aborting joinCallRoom',
       );
-      return;
+      return false;
     }
 
     // Emit the correct callType so the server handles the room correctly.
@@ -813,10 +879,12 @@ class WebRTCCallService extends ChangeNotifier {
     }
     await startLocalMedia(video: isVideoCall, audio: true);
 
-    debugPrint(
-      '[WebRTC] Emitting room:join for room $roomId (callType: $callType)',
-    );
-    _socket!.emit('room:join', {'roomId': roomId, 'callType': callType});
+    debugPrint('[WebRTC] Emitting room:join (callType: $callType)');
+    final result = await _emitWithAck('room:join', {
+      'roomId': roomId,
+      'callType': callType,
+    });
+    return result?['roomId'] == roomId;
   }
 
   // ── Mediasoup SFU Implementation ─────────────────────────────────────────
@@ -827,8 +895,9 @@ class WebRTCCallService extends ChangeNotifier {
       cMap['rtcpFeedback'] = (cMap['rtcpFeedback'] as List? ?? [])
           .map((fb) => Map<String, dynamic>.from(fb as Map))
           .toList();
-      cMap['parameters'] =
-          Map<dynamic, dynamic>.from(cMap['parameters'] as Map? ?? {});
+      cMap['parameters'] = Map<dynamic, dynamic>.from(
+        cMap['parameters'] as Map? ?? {},
+      );
       return cMap;
     }).toList();
 
@@ -871,7 +940,9 @@ class WebRTCCallService extends ChangeNotifier {
           if (!completer.isCompleted) {
             if (response is Map) {
               if (response['status'] == 'ok' && response['data'] is Map) {
-                completer.complete(Map<String, dynamic>.from(response['data'] as Map));
+                completer.complete(
+                  Map<String, dynamic>.from(response['data'] as Map),
+                );
               } else {
                 completer.complete(Map<String, dynamic>.from(response));
               }
@@ -922,7 +993,9 @@ class WebRTCCallService extends ChangeNotifier {
       _sendTransport = _sfuDevice!.createSendTransportFromMap(
         sendData,
         producerCallback: (producer) {
-          debugPrint('[WebRTC-SFU] Send transport producer registered: ${producer.id}');
+          debugPrint(
+            '[WebRTC-SFU] Send transport producer registered: ${producer.id}',
+          );
         },
       );
 
@@ -945,7 +1018,9 @@ class WebRTCCallService extends ChangeNotifier {
       });
 
       _sendTransport!.on('produce', (data) async {
-        debugPrint('[WebRTC-SFU] _sendTransport on(produce): kind=${data['kind']}');
+        debugPrint(
+          '[WebRTC-SFU] _sendTransport on(produce): kind=${data['kind']}',
+        );
         final callback = data['callback'] as Function?;
         final errback = data['errback'] as Function?;
         final rtpParams = data['rtpParameters'] as sfu.RtpParameters?;
@@ -979,7 +1054,9 @@ class WebRTCCallService extends ChangeNotifier {
         if (_isVideoCall) {
           final videoTrack = _localStream!.getVideoTracks().firstOrNull;
           if (videoTrack != null &&
-              _sfuDevice!.canProduce(sfu.RTCRtpMediaType.RTCRtpMediaTypeVideo)) {
+              _sfuDevice!.canProduce(
+                sfu.RTCRtpMediaType.RTCRtpMediaTypeVideo,
+              )) {
             _sendTransport!.produce(
               track: videoTrack,
               stream: _localStream!,
@@ -1091,7 +1168,9 @@ class WebRTCCallService extends ChangeNotifier {
     if (_recvTransport == null || _sfuDevice == null) return;
 
     try {
-      debugPrint('[WebRTC-SFU] Requesting consume for producer $producerId ($kindStr) from $peerUserId');
+      debugPrint(
+        '[WebRTC-SFU] Requesting consume for producer $producerId ($kindStr) from $peerUserId',
+      );
       final res = await _emitWithAck('consumer:create', {
         'roomId': _currentRoomId,
         'producerId': producerId,
@@ -1202,10 +1281,7 @@ class WebRTCCallService extends ChangeNotifier {
 
     final stream = _remoteStreams.remove(peerId);
     if (stream != null) {
-      for (final t in stream.getTracks()) {
-        t.stop();
-      }
-      stream.dispose();
+      unawaited(_disposeMediaStream(stream));
     }
 
     _networkQualities.remove(peerId);
@@ -1220,11 +1296,24 @@ class WebRTCCallService extends ChangeNotifier {
     _safeNotify();
   }
 
+  Future<void> _disposeMediaStream(MediaStream stream) async {
+    if (!_disposingStreams.add(stream)) return;
+
+    for (final track in stream.getTracks()) {
+      try {
+        await track.stop();
+      } catch (_) {}
+    }
+    try {
+      await stream.dispose();
+    } catch (error) {
+      debugPrint('[WebRTC] Media stream already released: $error');
+    }
+  }
+
   // ── Peer connection factory ───────────────────────────────────────────────
 
-  Future<RTCPeerConnection> _createPeerConnectionForPeer(
-    String peerId,
-  ) async {
+  Future<RTCPeerConnection> _createPeerConnectionForPeer(String peerId) async {
     if (_peerConnections.containsKey(peerId)) {
       return _peerConnections[peerId]!;
     }
@@ -1238,8 +1327,12 @@ class WebRTCCallService extends ChangeNotifier {
       }
     }
 
-    debugPrint('[WebRTC] Creating peer connection for peer $peerId (localStream: ${_localStream != null})');
-    final pc = await createPeerConnection(_iceServers);
+    debugPrint(
+      '[WebRTC] Creating peer connection for peer $peerId (localStream: ${_localStream != null})',
+    );
+    final pc = await createPeerConnection(
+      await _turnConfiguration() ?? _iceServers,
+    );
     _peerConnections[peerId] = pc;
 
     // Add our local tracks to this peer connection.
@@ -1258,7 +1351,8 @@ class WebRTCCallService extends ChangeNotifier {
       if (event.streams.isNotEmpty) {
         stream = event.streams[0];
       } else {
-        stream = _remoteStreams[peerId] ??
+        stream =
+            _remoteStreams[peerId] ??
             await createLocalMediaStream('remote_$peerId');
         await stream.addTrack(event.track);
       }
@@ -1318,11 +1412,14 @@ class WebRTCCallService extends ChangeNotifier {
           }
         });
         _updateAdaptiveBitrates();
-      } else if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+      } else if (state ==
+          RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
         // Transient disconnect: wait 3.5s before triggering ICE restart
         _iceDisconnectTimers[peerId]?.cancel();
         _iceDisconnectTimers[peerId] = Timer(const Duration(milliseconds: 3500), () {
-          debugPrint('[WebRTC] ICE disconnected >3.5s for $peerId — auto-restarting ICE');
+          debugPrint(
+            '[WebRTC] ICE disconnected >3.5s for $peerId — auto-restarting ICE',
+          );
           _reconnectingPeers.add(peerId);
           _safeNotify();
           _restartIceForPeer(peerId);
@@ -1331,7 +1428,9 @@ class WebRTCCallService extends ChangeNotifier {
         // Immediate failure: initiate ICE restart right away
         _iceDisconnectTimers[peerId]?.cancel();
         _iceDisconnectTimers.remove(peerId);
-        debugPrint('[WebRTC] ICE failed for $peerId — initiating immediate ICE restart');
+        debugPrint(
+          '[WebRTC] ICE failed for $peerId — initiating immediate ICE restart',
+        );
         _reconnectingPeers.add(peerId);
         _safeNotify();
         _restartIceForPeer(peerId);
@@ -1347,16 +1446,15 @@ class WebRTCCallService extends ChangeNotifier {
     var modified = sdp;
 
     // 1. Audio: Enable Opus DTX & In-Band FEC to eliminate silence-packet flooding
-    modified = modified.replaceAllMapped(
-      RegExp(r'(a=fmtp:\d+ [^\r\n]*)'),
-      (match) {
-        final line = match.group(0)!;
-        if (!line.contains('usedtx=')) {
-          return '$line;usedtx=1;useinbandfec=1;maxaveragebitrate=32000';
-        }
-        return line;
-      },
-    );
+    modified = modified.replaceAllMapped(RegExp(r'(a=fmtp:\d+ [^\r\n]*)'), (
+      match,
+    ) {
+      final line = match.group(0)!;
+      if (!line.contains('usedtx=')) {
+        return '$line;usedtx=1;useinbandfec=1;maxaveragebitrate=32000';
+      }
+      return line;
+    });
 
     // 2. Video: Apply b=AS bitrate limit matching participant scale
     if (_isVideoCall) {
@@ -1439,7 +1537,9 @@ class WebRTCCallService extends ChangeNotifier {
           }
         }
       } catch (e) {
-        debugPrint('[WebRTC] Error setting adaptive parameters for $peerId: $e');
+        debugPrint(
+          '[WebRTC] Error setting adaptive parameters for $peerId: $e',
+        );
       }
     }
   }
@@ -1448,7 +1548,9 @@ class WebRTCCallService extends ChangeNotifier {
 
   void _startSpeakerStatsMonitor() {
     if (_speakerStatsTimer != null) return;
-    _speakerStatsTimer = Timer.periodic(const Duration(milliseconds: 350), (_) async {
+    _speakerStatsTimer = Timer.periodic(const Duration(milliseconds: 350), (
+      _,
+    ) async {
       final hasActiveConnections = _isSfuMode
           ? (_peerConsumers.isNotEmpty || _sendTransport != null)
           : _peerConnections.isNotEmpty;
@@ -1465,7 +1567,8 @@ class WebRTCCallService extends ChangeNotifier {
       double topLevel = 0.04;
       bool hasChanges = false;
       _networkQualityTick++;
-      final bool shouldUpdateQuality = (_networkQualityTick % 3 == 0); // approx every 1.05s
+      final bool shouldUpdateQuality =
+          (_networkQualityTick % 3 == 0); // approx every 1.05s
 
       // 1. Remote peers audio levels & network stats
       if (_isSfuMode) {
@@ -1493,7 +1596,10 @@ class WebRTCCallService extends ChangeNotifier {
                   }
                 }
                 if (shouldUpdateQuality && statReports.isNotEmpty) {
-                  final qualityChanged = _processPeerNetworkQuality(peerId, statReports);
+                  final qualityChanged = _processPeerNetworkQuality(
+                    peerId,
+                    statReports,
+                  );
                   if (qualityChanged) {
                     hasChanges = true;
                   }
@@ -1563,7 +1669,8 @@ class WebRTCCallService extends ChangeNotifier {
             try {
               final stats = await firstPc.getStats();
               for (final report in stats) {
-                if (report.type == 'media-source' || report.type == 'outbound-rtp') {
+                if (report.type == 'media-source' ||
+                    report.type == 'outbound-rtp') {
                   final level = _extractAudioLevel(report);
                   if (level != null) {
                     final prev = _audioLevels['local'] ?? 0.0;
@@ -1598,7 +1705,8 @@ class WebRTCCallService extends ChangeNotifier {
           hasChanges = true;
         }
       } else if (_lastSpeechTime != null &&
-          now.difference(_lastSpeechTime!) > const Duration(milliseconds: 700)) {
+          now.difference(_lastSpeechTime!) >
+              const Duration(milliseconds: 700)) {
         if (_activeSpeakerId != null) {
           _activeSpeakerId = null;
           hasChanges = true;
@@ -1641,13 +1749,17 @@ class WebRTCCallService extends ChangeNotifier {
 
     if (values.containsKey('audioOutputLevel')) {
       final val = values['audioOutputLevel'];
-      final numVal = val is num ? val.toDouble() : double.tryParse(val.toString());
+      final numVal = val is num
+          ? val.toDouble()
+          : double.tryParse(val.toString());
       if (numVal != null) return (numVal / 32767.0).clamp(0.0, 1.0);
     }
 
     if (values.containsKey('audioInputLevel')) {
       final val = values['audioInputLevel'];
-      final numVal = val is num ? val.toDouble() : double.tryParse(val.toString());
+      final numVal = val is num
+          ? val.toDouble()
+          : double.tryParse(val.toString());
       if (numVal != null) return (numVal / 32767.0).clamp(0.0, 1.0);
     }
 
@@ -1669,14 +1781,16 @@ class WebRTCCallService extends ChangeNotifier {
         final state = values['state'];
         final nominated = values['nominated'];
         final selected = values['selected'];
-        final isSelected = state == 'succeeded' ||
+        final isSelected =
+            state == 'succeeded' ||
             nominated == true ||
             nominated == 'true' ||
             selected == true ||
             selected == 'true';
 
         if (isSelected || values.containsKey('currentRoundTripTime')) {
-          final rttVal = values['currentRoundTripTime'] ?? values['roundTripTime'];
+          final rttVal =
+              values['currentRoundTripTime'] ?? values['roundTripTime'];
           if (rttVal != null) {
             final parsed = _numToDouble(rttVal);
             if (parsed != null && parsed > 0) {
@@ -1757,11 +1871,15 @@ class WebRTCCallService extends ChangeNotifier {
     }
 
     final effectiveRtt = rtt ?? _networkQualities[peerId]?.rttMs ?? 35.0;
-    final effectiveJitter = jitter ?? _networkQualities[peerId]?.jitterMs ?? 8.0;
+    final effectiveJitter =
+        jitter ?? _networkQualities[peerId]?.jitterMs ?? 8.0;
 
     // ITU-T G.107 standard E-model Mean Opinion Score (MOS)
-    final effectiveDelay = (effectiveRtt / 2.0) + (effectiveJitter * 2.0) + 10.0;
-    final delayImpairment = effectiveDelay > 100.0 ? (effectiveDelay - 100.0) / 35.0 : 0.0;
+    final effectiveDelay =
+        (effectiveRtt / 2.0) + (effectiveJitter * 2.0) + 10.0;
+    final delayImpairment = effectiveDelay > 100.0
+        ? (effectiveDelay - 100.0) / 35.0
+        : 0.0;
     final lossImpairment = lossPercent * 2.5;
 
     double rFactor = 94.2 - delayImpairment - lossImpairment;
@@ -1771,19 +1889,31 @@ class WebRTCCallService extends ChangeNotifier {
     if (rFactor >= 100.0) {
       mos = 4.5;
     } else if (rFactor > 0.0) {
-      mos = 1.0 + 0.035 * rFactor + rFactor * (rFactor - 60.0) * (100.0 - rFactor) * 7.0e-6;
+      mos =
+          1.0 +
+          0.035 * rFactor +
+          rFactor * (rFactor - 60.0) * (100.0 - rFactor) * 7.0e-6;
     }
     mos = mos.clamp(1.0, 4.5);
 
     int bars;
     String label;
-    if (lossPercent > 10.0 || effectiveRtt > 450.0 || effectiveJitter > 120.0 || mos < 2.5) {
+    if (lossPercent > 10.0 ||
+        effectiveRtt > 450.0 ||
+        effectiveJitter > 120.0 ||
+        mos < 2.5) {
       bars = 1;
       label = 'Poor';
-    } else if (lossPercent > 5.0 || effectiveRtt > 280.0 || effectiveJitter > 70.0 || mos < 3.4) {
+    } else if (lossPercent > 5.0 ||
+        effectiveRtt > 280.0 ||
+        effectiveJitter > 70.0 ||
+        mos < 3.4) {
       bars = 2;
       label = 'Fair';
-    } else if (lossPercent > 2.0 || effectiveRtt > 160.0 || effectiveJitter > 35.0 || mos < 4.0) {
+    } else if (lossPercent > 2.0 ||
+        effectiveRtt > 160.0 ||
+        effectiveJitter > 35.0 ||
+        mos < 4.0) {
       bars = 3;
       label = 'Good';
     } else {
@@ -1840,7 +1970,9 @@ class WebRTCCallService extends ChangeNotifier {
   /// 4. Increments videoRefreshEpoch to force UI widget to rebuild with new renderer
   /// 5. Requests remote peer to also transmit a fresh keyframe
   Future<void> _rebindAndRestoreVideo(String peerId) async {
-    debugPrint('[WebRTC] 🔄 Rebinding & restoring video stream for peer: $peerId');
+    debugPrint(
+      '[WebRTC] 🔄 Rebinding & restoring video stream for peer: $peerId',
+    );
 
     // 1. Force local video sender to produce a fresh IDR keyframe
     await _kickstartVideoSender(peerId);
@@ -1925,7 +2057,9 @@ class WebRTCCallService extends ChangeNotifier {
       for (final sender in senders) {
         if (sender.track?.kind == 'video') {
           await sender.replaceTrack(localVideoTrack);
-          debugPrint('[WebRTC] 🎬 replaceTrack invoked on video sender for $peerId (IDR keyframe forced)');
+          debugPrint(
+            '[WebRTC] 🎬 replaceTrack invoked on video sender for $peerId (IDR keyframe forced)',
+          );
         }
       }
     } catch (e) {
@@ -1948,10 +2082,14 @@ class WebRTCCallService extends ChangeNotifier {
       return;
     }
 
-    debugPrint('[WebRTC] 🔄 Restarting ICE for $peerId (Attempt $attempts/3)...');
+    debugPrint(
+      '[WebRTC] 🔄 Restarting ICE for $peerId (Attempt $attempts/3)...',
+    );
 
     try {
       try {
+        final configuration = await _turnConfiguration();
+        if (configuration != null) await pc.setConfiguration(configuration);
         await pc.restartIce();
       } catch (e) {
         debugPrint('[WebRTC] pc.restartIce() call note: $e');
@@ -1984,7 +2122,9 @@ class WebRTCCallService extends ChangeNotifier {
         return;
       }
 
-      debugPrint('[WebRTC] Creating offer for $peerId (localStream: ${_localStream != null}, tracks: ${_localStream?.getTracks().length ?? 0})');
+      debugPrint(
+        '[WebRTC] Creating offer for $peerId (localStream: ${_localStream != null}, tracks: ${_localStream?.getTracks().length ?? 0})',
+      );
       final offer = await pc.createOffer({
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': _isVideoCall,
@@ -2023,7 +2163,8 @@ class WebRTCCallService extends ChangeNotifier {
       _offerWatchdogTimers.remove(peerId);
 
       final incomingSdp = sdpMap['sdp'] as String? ?? '';
-      if (incomingSdp.isNotEmpty && _lastProcessedOfferSdp[peerId] == incomingSdp) {
+      if (incomingSdp.isNotEmpty &&
+          _lastProcessedOfferSdp[peerId] == incomingSdp) {
         debugPrint('[WebRTC] Duplicate offer received from $peerId — ignoring');
         return;
       }
@@ -2032,7 +2173,9 @@ class WebRTCCallService extends ChangeNotifier {
       final pc = await _createPeerConnectionForPeer(peerId);
 
       // Check for offer collision (glare)
-      final hasLocalOffer = pc.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer;
+      final hasLocalOffer =
+          pc.signalingState ==
+          RTCSignalingState.RTCSignalingStateHaveLocalOffer;
       final offerCollision = (_makingOffer[peerId] == true) || hasLocalOffer;
 
       if (offerCollision) {
@@ -2046,8 +2189,7 @@ class WebRTCCallService extends ChangeNotifier {
         }
       }
 
-      final description =
-          RTCSessionDescription(incomingSdp, sdpMap['type']);
+      final description = RTCSessionDescription(incomingSdp, sdpMap['type']);
       await pc.setRemoteDescription(description);
 
       final answer = await pc.createAnswer({
@@ -2066,7 +2208,9 @@ class WebRTCCallService extends ChangeNotifier {
         'to': peerId,
         'sdp': optimizedAnswer.toMap(),
       });
-      debugPrint('[WebRTC] Sent answer to peer $peerId${isIceRestart ? " (ICE restart)" : ""}');
+      debugPrint(
+        '[WebRTC] Sent answer to peer $peerId${isIceRestart ? " (ICE restart)" : ""}',
+      );
 
       await _drainPendingCandidates(peerId);
 
@@ -2074,16 +2218,22 @@ class WebRTCCallService extends ChangeNotifier {
         // For ICE restart offers, Device B (the non-disconnecting peer) may never see
         // an ICE state transition back to "connected" because it was always connected.
         // Schedule delayed video restoration after ICE has had time to use new candidates.
-        debugPrint('[WebRTC] ICE restart answer sent — scheduling delayed video restore for $peerId');
+        debugPrint(
+          '[WebRTC] ICE restart answer sent — scheduling delayed video restore for $peerId',
+        );
         Future.delayed(const Duration(milliseconds: 1200), () {
           if (_peerConnections.containsKey(peerId)) {
-            debugPrint('[WebRTC] 🔄 Delayed restore (1200ms) for ICE restart peer: $peerId');
+            debugPrint(
+              '[WebRTC] 🔄 Delayed restore (1200ms) for ICE restart peer: $peerId',
+            );
             _rebindAndRestoreVideo(peerId);
           }
         });
         Future.delayed(const Duration(milliseconds: 2500), () {
           if (_peerConnections.containsKey(peerId)) {
-            debugPrint('[WebRTC] 🔄 Delayed restore (2500ms) for ICE restart peer: $peerId');
+            debugPrint(
+              '[WebRTC] 🔄 Delayed restore (2500ms) for ICE restart peer: $peerId',
+            );
             _rebindAndRestoreVideo(peerId);
           }
         });
@@ -2120,12 +2270,9 @@ class WebRTCCallService extends ChangeNotifier {
     }
 
     final stream = _remoteStreams.remove(peerId);
-    try {
-      for (final track in stream?.getTracks() ?? []) {
-        track.stop();
-      }
-      stream?.dispose();
-    } catch (_) {}
+    if (stream != null) {
+      unawaited(_disposeMediaStream(stream));
+    }
 
     // Re-bind renderer to another peer if needed.
     if (_remoteStreams.isNotEmpty && _isVideoCall) {
@@ -2303,30 +2450,14 @@ class WebRTCCallService extends ChangeNotifier {
     _pendingCandidates.clear();
 
     // 3. Stop and dispose local media stream.
-    if (_localStream != null) {
-      try {
-        for (final track in _localStream!.getTracks()) {
-          await track.stop();
-        }
-        await _localStream!.dispose();
-      } catch (e) {
-        debugPrint('[WebRTC] Error disposing local stream: $e');
-      }
-      _localStream = null;
-    }
-
-    // 4. Stop and dispose all remote streams.
-    for (final stream in _remoteStreams.values) {
-      try {
-        for (final track in stream.getTracks()) {
-          await track.stop();
-        }
-        await stream.dispose();
-      } catch (e) {
-        debugPrint('[WebRTC] Remote stream cleanup: $e');
-      }
-    }
+    final localStream = _localStream;
+    _localStream = null;
+    final remoteStreams = _remoteStreams.values.toList();
     _remoteStreams.clear();
+    if (localStream != null) await _disposeMediaStream(localStream);
+    for (final stream in remoteStreams) {
+      await _disposeMediaStream(stream);
+    }
 
     _currentRoomId = null;
     _safeNotify();
@@ -2402,29 +2533,14 @@ class WebRTCCallService extends ChangeNotifier {
     }
     _peerConnections.clear();
 
-    if (_localStream != null) {
-      try {
-        for (final track in _localStream!.getTracks()) {
-          track.stop();
-        }
-        _localStream!.dispose();
-      } catch (e) {
-        debugPrint('[WebRTC] Error disposing local stream during teardown: $e');
-      }
-      _localStream = null;
-    }
-
-    for (final stream in _remoteStreams.values) {
-      try {
-        for (final track in stream.getTracks()) {
-          track.stop();
-        }
-        stream.dispose();
-      } catch (e) {
-        debugPrint('[WebRTC] Error disposing remote stream: $e');
-      }
-    }
+    final localStream = _localStream;
+    _localStream = null;
+    final remoteStreams = _remoteStreams.values.toList();
     _remoteStreams.clear();
+    if (localStream != null) unawaited(_disposeMediaStream(localStream));
+    for (final stream in remoteStreams) {
+      unawaited(_disposeMediaStream(stream));
+    }
 
     localRenderer.dispose();
     remoteRenderer.dispose();

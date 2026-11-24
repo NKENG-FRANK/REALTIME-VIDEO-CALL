@@ -3,16 +3,17 @@ import 'package:videocall/config/theme/app_colors.dart';
 
 /// Builder widget that cleanly renders child without hover scaling or elevation shifts.
 class HoverBuilder extends StatelessWidget {
-  final Widget Function(BuildContext context, bool isHovered, bool isPressed) builder;
+  final Widget Function(BuildContext context, bool isHovered, bool isPressed)
+  builder;
   final VoidCallback? onTap;
   final MouseCursor cursor;
 
   const HoverBuilder({
-    Key? key,
+    super.key,
     required this.builder,
     this.onTap,
     this.cursor = SystemMouseCursors.click,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +34,13 @@ class SmoothActionButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   const SmoothActionButton({
-    Key? key,
+    super.key,
     required this.icon,
     required this.label,
     required this.backgroundColor,
     required this.foregroundColor,
     this.onPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +50,7 @@ class SmoothActionButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: backgroundColor.withOpacity(0.15),
+            color: backgroundColor.withValues(alpha: 0.15),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -60,8 +61,8 @@ class SmoothActionButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           borderRadius: BorderRadius.circular(8),
-          splashColor: Colors.white.withOpacity(0.2),
-          highlightColor: Colors.white.withOpacity(0.1),
+          splashColor: Colors.white.withValues(alpha: 0.2),
+          highlightColor: Colors.white.withValues(alpha: 0.1),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
@@ -98,7 +99,7 @@ class SmoothHoverCard extends StatelessWidget {
   final Border? border;
 
   const SmoothHoverCard({
-    Key? key,
+    super.key,
     required this.child,
     this.onTap,
     this.normalColor,
@@ -106,7 +107,7 @@ class SmoothHoverCard extends StatelessWidget {
     this.borderRadius = 8,
     this.padding,
     this.border,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -123,12 +124,9 @@ class SmoothHoverCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(borderRadius),
-          splashColor: AppColors.primary.withOpacity(0.08),
-          highlightColor: AppColors.primary.withOpacity(0.04),
-          child: Padding(
-            padding: padding ?? EdgeInsets.zero,
-            child: child,
-          ),
+          splashColor: AppColors.primary.withValues(alpha: 0.08),
+          highlightColor: AppColors.primary.withValues(alpha: 0.04),
+          child: Padding(padding: padding ?? EdgeInsets.zero, child: child),
         ),
       ),
     );
@@ -142,25 +140,28 @@ class SmoothScrollView extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
 
   const SmoothScrollView({
-    Key? key,
+    super.key,
     required this.child,
     this.controller,
     this.padding,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
-    final effectiveController = controller ?? PrimaryScrollController.of(context);
+    final effectiveController =
+        controller ?? PrimaryScrollController.of(context);
     return RawScrollbar(
       controller: effectiveController,
-      thumbColor: AppColors.primary.withOpacity(0.25),
+      thumbColor: AppColors.primary.withValues(alpha: 0.25),
       radius: const Radius.circular(6),
       thickness: 6,
       fadeDuration: const Duration(milliseconds: 400),
       timeToFade: const Duration(milliseconds: 1200),
       child: SingleChildScrollView(
         controller: effectiveController,
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         padding: padding,
         child: child,
       ),

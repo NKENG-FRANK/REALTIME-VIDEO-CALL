@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../../../config/theme/app_colors.dart';
 import '../../../../core/services/meeting_link_service.dart';
 import '../pages/call_page.dart';
@@ -7,14 +8,11 @@ import '../pages/audio_call_page.dart';
 
 /// Shows the Join Meeting modal dialog where users can paste a link or enter a Room ID.
 void showJoinMeetingDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    builder: (ctx) => const _JoinMeetingDialog(),
-  );
+  showDialog(context: context, builder: (ctx) => const _JoinMeetingDialog());
 }
 
 class _JoinMeetingDialog extends StatefulWidget {
-  const _JoinMeetingDialog({Key? key}) : super(key: key);
+  const _JoinMeetingDialog();
 
   @override
   State<_JoinMeetingDialog> createState() => _JoinMeetingDialogState();
@@ -55,7 +53,9 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
     setState(() {
       _detectedRoomId = parsed.roomId;
       _isVideo = parsed.isVideo;
-      if (parsed.title != null && parsed.title!.isNotEmpty && _titleController.text.isEmpty) {
+      if (parsed.title != null &&
+          parsed.title!.isNotEmpty &&
+          _titleController.text.isEmpty) {
         _titleController.text = parsed.title!;
       }
       _errorText = null;
@@ -79,7 +79,7 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
     }
 
     final parsed = MeetingLinkService.parseInput(rawInput);
-    if (parsed.roomId.isEmpty) {
+    if (!MeetingLinkService.isValidRoomId(parsed.roomId)) {
       setState(() {
         _errorText = 'Invalid meeting link or Room ID';
       });
@@ -173,13 +173,20 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                         SizedBox(height: 2),
                         Text(
                           'Enter an invite link or room ID to connect',
-                          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -206,11 +213,21 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                   TextField(
                     controller: _linkController,
                     autofocus: true,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'e.g. https://callwave.cenadi.cm/join?room=... or room-123',
-                      hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                      prefixIcon: const Icon(Icons.link_rounded, color: AppColors.primary, size: 20),
+                      hintStyle: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.link_rounded,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.content_paste_rounded, size: 18),
                         tooltip: 'Paste from clipboard',
@@ -229,7 +246,10 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                     onSubmitted: (_) => _joinMeeting(),
@@ -239,7 +259,10 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                   if (_detectedRoomId.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(6),
@@ -247,7 +270,11 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.check_circle_rounded, size: 13, color: AppColors.primary),
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 13,
+                            color: AppColors.primary,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             'Room detected: $_detectedRoomId',
@@ -277,11 +304,21 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _titleController,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'e.g. Design Review, Weekly Sync',
-                      hintStyle: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                      prefixIcon: const Icon(Icons.title_rounded, color: AppColors.textMuted, size: 19),
+                      hintStyle: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.title_rounded,
+                        color: AppColors.textMuted,
+                        size: 19,
+                      ),
                       filled: true,
                       fillColor: const Color(0xFFF7FAF8),
                       border: OutlineInputBorder(
@@ -294,7 +331,10 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                   ),
@@ -358,7 +398,10 @@ class _JoinMeetingDialogState extends State<_JoinMeetingDialog> {
                         flex: 2,
                         child: ElevatedButton.icon(
                           onPressed: _joinMeeting,
-                          icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Join Meeting'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,

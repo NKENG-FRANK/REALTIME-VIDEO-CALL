@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../../../../config/theme/app_colors.dart';
+import '../../../../core/l10n/app_localizations.dart';
 
 /// Call ended screen showing call summary statistics,
 /// star rating for quality feedback, and action buttons.
@@ -12,14 +14,14 @@ class CallEndedPage extends StatefulWidget {
   final VoidCallback? onBackToHome;
 
   const CallEndedPage({
-    Key? key,
+    super.key,
     this.callTitle = 'Design Team',
     this.participantCount = 5,
     this.duration = '42:17',
     this.quality = 'Good',
     this.onCallAgain,
     this.onBackToHome,
-  }) : super(key: key);
+  });
 
   @override
   State<CallEndedPage> createState() => _CallEndedPageState();
@@ -47,10 +49,7 @@ class _CallEndedPageState extends State<CallEndedPage>
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.08),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    ));
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
     _fadeController.forward();
   }
 
@@ -62,8 +61,9 @@ class _CallEndedPageState extends State<CallEndedPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      backgroundColor: AppColors.callBackground,
+      backgroundColor: const Color(0xFF09120E),
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
@@ -78,10 +78,10 @@ class _CallEndedPageState extends State<CallEndedPage>
                   _buildPhoneIcon(),
                   const SizedBox(height: 20),
                   // Call ended text
-                  const Text(
-                    'Call ended',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
+                  Text(
+                    l10n.callEnded,
+                    style: const TextStyle(
+                      color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
@@ -89,9 +89,9 @@ class _CallEndedPageState extends State<CallEndedPage>
                   const SizedBox(height: 8),
                   // Subtitle
                   Text(
-                    '${widget.callTitle} · ${widget.participantCount} participants',
+                    '${widget.callTitle} · ${widget.participantCount} ${l10n.participants.toLowerCase()}',
                     style: TextStyle(
-                      color: AppColors.textMuted.withOpacity(0.8),
+                      color: const Color(0xFF8DA69A),
                       fontSize: 12,
                     ),
                     textAlign: TextAlign.center,
@@ -102,9 +102,12 @@ class _CallEndedPageState extends State<CallEndedPage>
                   const SizedBox(height: 32),
                   // Rating prompt
                   Text(
-                    'How was the call quality?',
+                    l10n.text(
+                      fr: 'Comment était la qualité de l’appel ?',
+                      en: 'How was the call quality?',
+                    ),
                     style: TextStyle(
-                      color: AppColors.textPrimary.withOpacity(0.75),
+                      color: Colors.white.withValues(alpha: 0.82),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -131,21 +134,25 @@ class _CallEndedPageState extends State<CallEndedPage>
       height: 64,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.primary.withOpacity(0.12),
+        color: AppColors.primary.withValues(alpha: 0.2),
       ),
       child: Icon(
         Icons.phone,
         size: 28,
-        color: AppColors.primary.withOpacity(0.7),
+        color: AppColors.primary.withValues(alpha: 0.7),
       ),
     );
   }
 
   Widget _buildStatCards() {
+    final l10n = AppLocalizations.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         // On very narrow screens fit all 3 cards side by side within available width
-        final cardWidth = ((constraints.maxWidth - 40 - 24) / 3).clamp(80.0, 130.0);
+        final cardWidth = ((constraints.maxWidth - 40 - 24) / 3).clamp(
+          80.0,
+          130.0,
+        );
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Wrap(
@@ -155,20 +162,20 @@ class _CallEndedPageState extends State<CallEndedPage>
             children: [
               _StatCard(
                 value: widget.duration,
-                label: 'Duration',
-                color: AppColors.statGreenTint,
+                label: l10n.duration,
+                color: const Color(0xFF133C2B),
                 width: cardWidth,
               ),
               _StatCard(
                 value: '${widget.participantCount}',
-                label: 'Participants',
-                color: AppColors.statYellowTint,
+                label: l10n.participants,
+                color: const Color(0xFF34290E),
                 width: cardWidth,
               ),
               _StatCard(
                 value: widget.quality,
-                label: 'Quality',
-                color: AppColors.statNeutralTint,
+                label: l10n.text(fr: 'Qualité', en: 'Quality'),
+                color: const Color(0xFF1B2C23),
                 width: cardWidth,
               ),
             ],
@@ -211,6 +218,7 @@ class _CallEndedPageState extends State<CallEndedPage>
   }
 
   Widget _buildActionButtons(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isNarrow = screenWidth < 380;
 
@@ -222,14 +230,14 @@ class _CallEndedPageState extends State<CallEndedPage>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _ActionButton(
-              label: 'Call again',
+              label: l10n.callAgain,
               filled: true,
               fullWidth: true,
               onTap: widget.onCallAgain ?? () {},
             ),
             const SizedBox(height: 10),
             _ActionButton(
-              label: 'Back to home',
+              label: l10n.text(fr: 'Retour à l’accueil', en: 'Back to home'),
               filled: false,
               fullWidth: true,
               onTap: widget.onBackToHome ?? () {},
@@ -245,12 +253,12 @@ class _CallEndedPageState extends State<CallEndedPage>
       runSpacing: 10,
       children: [
         _ActionButton(
-          label: 'Call again',
+          label: l10n.callAgain,
           filled: true,
           onTap: widget.onCallAgain ?? () {},
         ),
         _ActionButton(
-          label: 'Back to home',
+          label: l10n.text(fr: 'Retour à l’accueil', en: 'Back to home'),
           filled: false,
           onTap: widget.onBackToHome ?? () {},
         ),
@@ -278,18 +286,16 @@ class _StatCard extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.6),
+        color: color.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
           Text(
             value,
             style: const TextStyle(
-              color: AppColors.textPrimary,
+              color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
@@ -300,7 +306,7 @@ class _StatCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: AppColors.textMuted.withOpacity(0.8),
+              color: const Color(0xFF8DA69A),
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
@@ -343,15 +349,18 @@ class _ActionButtonState extends State<_ActionButton> {
         child: ElevatedButton(
           onPressed: widget.onTap,
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                widget.filled ? AppColors.primary : Colors.transparent,
-            foregroundColor: widget.filled ? Colors.white : AppColors.primary,
+            backgroundColor: widget.filled
+                ? AppColors.primary
+                : Colors.transparent,
+            foregroundColor: widget.filled
+                ? Colors.white
+                : const Color(0xFF3DDC97),
             elevation: widget.filled && _hovering ? 6 : 0,
-            shadowColor: AppColors.primary.withOpacity(0.3),
+            shadowColor: AppColors.primary.withValues(alpha: 0.3),
             side: widget.filled
                 ? null
                 : BorderSide(
-                    color: AppColors.primary.withOpacity(0.5),
+                    color: const Color(0xFF3DDC97).withValues(alpha: 0.5),
                   ),
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             shape: RoundedRectangleBorder(
@@ -360,10 +369,7 @@ class _ActionButtonState extends State<_ActionButton> {
           ),
           child: Text(
             widget.label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
       ),

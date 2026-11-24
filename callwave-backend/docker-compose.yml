@@ -10,12 +10,12 @@ services:
     environment:
       POSTGRES_DB: callwave
       POSTGRES_USER: callwave
-      POSTGRES_PASSWORD: callwave_secret
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U callwave -d callwave" ]
       interval: 10s
@@ -30,7 +30,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
@@ -43,12 +43,12 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: callwave
-      RABBITMQ_DEFAULT_PASS: callwave_secret
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}}"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672" # AMQP
-      - "15672:15672" # Management UI
+      - "127.0.0.1:5672:5672" # AMQP
+      - "127.0.0.1:15672:15672" # Management UI
     healthcheck:
       test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 10s
@@ -75,11 +75,10 @@ services:
       DB_PORT: 5432
       DB_NAME: callwave
       DB_USER: callwave
-      DB_PASSWORD: callwave_secret
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}"
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_key_change_in_prod}
+      RABBITMQ_URL: "amqp://callwave:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}}@rabbitmq:5672"
+      JWT_SECRET: "${JWT_SECRET:?Set a unique JWT_SECRET in callwave-backend/.env}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,8 +105,8 @@ services:
       HOST: 0.0.0.0
       PORT: 3000 # base port; service listens on PORT+1 = 3001
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+      RABBITMQ_URL: "amqp://callwave:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}}@rabbitmq:5672"
+      JWT_SECRET: "${JWT_SECRET:?Set a unique JWT_SECRET in callwave-backend/.env}"
     depends_on:
       redis:
         condition: service_healthy
@@ -127,17 +126,20 @@ services:
     restart: unless-stopped
     ports:
       - "3002:3002"
-      # Mediasoup UDP media ports (match RTC port range in workerPool.ts)
+      # Mediasoup media ports (match RTC port range in workerPool.ts)
       - "40000-40099:40000-40099/udp"
+      - "40000-40099:40000-40099/tcp"
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000 # base port; service listens on PORT+2 = 3002
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_change_in_prod}
+      RABBITMQ_URL: "amqp://callwave:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}}@rabbitmq:5672"
+      JWT_SECRET: "${JWT_SECRET:?Set a unique JWT_SECRET in callwave-backend/.env}"
       # IMPORTANT: Set to your host/public IP so Mediasoup ICE candidates are reachable
-      ANNOUNCED_IP: ${ANNOUNCED_IP:-144.91.89.100}
+      ANNOUNCED_IP: "${ANNOUNCED_IP:-144.91.89.100}"
+      TURN_SHARED_SECRET: "${TURN_SHARED_SECRET:-}"
+      TURN_URLS: "${TURN_URLS:-turn:${ANNOUNCED_IP:-144.91.89.100}:3478?transport=udp,turn:${ANNOUNCED_IP:-144.91.89.100}:3478?transport=tcp}"
     depends_on:
       redis:
         condition: service_healthy
@@ -166,9 +168,10 @@ services:
       DB_PORT: 5432
       DB_NAME: callwave
       DB_USER: callwave
-      DB_PASSWORD: callwave_secret
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}"
       REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://callwave:callwave_secret@rabbitmq:5672
+      RABBITMQ_URL: "amqp://callwave:${RABBITMQ_PASSWORD:-${DB_PASSWORD:?Set DB_PASSWORD in callwave-backend/.env}}@rabbitmq:5672"
+      JWT_SECRET: "${JWT_SECRET:?Set a unique JWT_SECRET in callwave-backend/.env}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -189,13 +192,15 @@ services:
       - --log-file=stdout
       - --listening-port=3478
       - --fingerprint
-      - --lt-cred-mech
-      - --realm=144.91.89.100
-      - --user=callwave:callwave_secret
-      - --external-ip=144.91.89.100
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET in callwave-backend/.env}
+      - --realm=${ANNOUNCED_IP:-144.91.89.100}
+      - --external-ip=${ANNOUNCED_IP:-144.91.89.100}
       - --min-port=49152
       - --max-port=49252
       - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Volumes
