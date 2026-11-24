@@ -8,8 +8,8 @@ class ApiConfig {
     defaultValue: false,
   );
 
-  // Fallback LAN IP of the current development machine
-  static const String defaultLanIp = '192.168.50.72';
+  // Fallback LAN / VPS IP when SERVER_IP is not passed via --dart-define
+  static const String defaultLanIp = '144.91.89.100';
 
   static String get host {
     if (_configuredHost.isNotEmpty) {
